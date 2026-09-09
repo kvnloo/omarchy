@@ -83,10 +83,11 @@ if (( $# == 0 )); then
   fi
 
   if use_ddc_display; then
-    if brightness=$(omarchy-brightness-display-ddc "$monitor" 2>/dev/null); then
-      printf '%s\n' "$brightness"
-      exit
-    fi
+    # External without working DDC has no brightness backend — do not report the
+    # laptop panel value for an HDMI/DP-focused output.
+    brightness=$(omarchy-brightness-display-ddc "$monitor" 2>/dev/null) || exit 1
+    printf '%s\n' "$brightness"
+    exit
   fi
 
   device="$(omarchy-hw-display)" || exit 1
@@ -120,11 +121,10 @@ if use_apple_display; then
     omarchy-brightness-display-apple "$step"
   fi
 elif use_ddc_display; then
+  # External-with-no-ddc must no-op. Falling through to omarchy-hw-display /
+  # brightnessctl would usually dim the laptop panel while focused on HDMI/DP.
   if brightness="$(omarchy-brightness-display-ddc "$monitor" "$step" 2>/dev/null)"; then
     (( no_osd )) || omarchy-osd -i brightness -p "$brightness"
-  else
-    device="$(omarchy-hw-display 2>/dev/null)" || exit 1
-    set_backlight_brightness "$device" || exit 1
   fi
 else
   device="$(omarchy-hw-display)" || exit 1
