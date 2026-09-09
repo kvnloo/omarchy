@@ -69,12 +69,21 @@ Exec=retroarch -L /usr/lib/libretro/fbneo_libretro.so /home/example/Games/roms/f
 DESKTOP
 
 # Plugin-owned launcher: basename matches ~/.config/omarchy/plugins/<id>
-mkdir -p "$tmp_dir/config/omarchy/plugins/omamail"
+mkdir -p "$tmp_dir/config/omarchy/plugins/omamail/icons"
+touch "$tmp_dir/config/omarchy/plugins/omamail/icons/app.png"
 cat >"$tmp_dir/data/applications/omamail.desktop" <<'DESKTOP'
 [Desktop Entry]
 Name=Omamail
 Exec=true
 MimeType=x-scheme-handler/mailto;
+DESKTOP
+
+# False positive: Icon= under a plugin tree must NOT imply ownership.
+cat >"$tmp_dir/data/applications/borrowed-icon.desktop" <<DESKTOP
+[Desktop Entry]
+Name=Borrowed Icon
+Exec=true
+Icon=$tmp_dir/config/omarchy/plugins/omamail/icons/app.png
 DESKTOP
 
 write_fake_command omarchy-plugin-remove plugin
@@ -92,6 +101,7 @@ mkdir -p "$HOME"
 "$ROOT/bin/omarchy-remove-launcher-entry" native.desktop Native
 "$ROOT/bin/omarchy-remove-launcher-entry" aliens.desktop Aliens
 "$ROOT/bin/omarchy-remove-launcher-entry" omamail.desktop Omamail
+"$ROOT/bin/omarchy-remove-launcher-entry" borrowed-icon.desktop "Borrowed Icon"
 
 mapfile -t lines <"$TEST_LOG"
 
@@ -116,3 +126,11 @@ pass "launcher remove routes plugin desktops through plugin remove"
 [[ -e $tmp_dir/data/applications/omamail.desktop ]] || fail "plugin remove owns the desktop file lifecycle"
 # Fake plugin-remove does not delete desktop; real one does via plugin tree. Presence of call is the contract.
 pass "plugin remove is invoked for plugin-owned launchers"
+
+[[ ! -e $tmp_dir/data/applications/borrowed-icon.desktop ]] || fail "Icon-only reference deletes desktop without plugin remove"
+pass "Icon-only reference deletes desktop without plugin remove"
+
+# Still exactly one plugin remove (omamail); borrowed-icon must not trigger another.
+plugin_calls=$(grep -c '^plugin:' "$TEST_LOG" || true)
+(( plugin_calls == 1 )) || fail "Icon= under plugin tree is not ownership" "plugin_calls=$plugin_calls lines=$(printf '%s\n' "${lines[@]}")"
+pass "Icon= under plugin tree is not ownership"

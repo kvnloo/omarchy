@@ -92,8 +92,9 @@ plugin_owner_for_desktop() {
     return 0
   fi
 
-  # Exec/Icon paths that resolve inside a plugin tree.
-  exec_paths=$(sed -n 's/^\(Exec\|Icon\|TryExec\|Path\)=//p' "$desktop_file")
+  # Exec/TryExec/Path that resolve inside a plugin tree (not Icon= —
+  # an unrelated .desktop may borrow a plugin icon without owning it).
+  exec_paths=$(sed -n 's/^\(Exec\|TryExec\|Path\)=//p' "$desktop_file")
   while IFS= read -r candidate; do
     [[ -z $candidate ]] && continue
     # Strip field codes and take first token for Exec=
