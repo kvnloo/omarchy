@@ -100,3 +100,10 @@ rm -f "$tmp_dir/power/BAT0/charge_control_start_threshold" "$tmp_dir/power/BAT0/
 shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
 grep -Fx $'threshold\t75-80%' <<<"$shell_output" >/dev/null || fail "battery status falls back to UPower thresholds without sysfs"
 pass "battery status falls back to UPower thresholds without sysfs"
+
+# End-only sysfs (ASUS #7374): do not mix UPower's fabricated start with sysfs end.
+rm -f "$tmp_dir/power/BAT0/charge_control_start_threshold"
+printf '60\n' >"$tmp_dir/power/BAT0/charge_control_end_threshold"
+shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
+grep -Fx $'threshold\t60%' <<<"$shell_output" >/dev/null || fail "battery status keeps end-only sysfs without mixing UPower start"
+pass "battery status keeps end-only sysfs without mixing UPower start"
