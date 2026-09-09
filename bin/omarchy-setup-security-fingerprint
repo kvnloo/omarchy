@@ -66,13 +66,26 @@ EOF
 }
 
 verify_fingerprint() {
-  local attempt
+  local attempt output
+
+  # Enroll and verify run as different users; some readers (e.g. VFS5011)
+  # are not released cleanly when enroll finishes. Brief settle, then retry
+  # only claim/busy failures — not verify-no-match (wrong swipe).
+  sleep 0.5
 
   for attempt in 1 2 3 4 5; do
-    if fprintd-verify; then
+    if output=$(fprintd-verify 2>&1); then
+      printf '%s\n' "$output"
       return 0
     fi
-    sleep 0.5
+    printf '%s\n' "$output"
+
+    if [[ "$output" == *"failed to claim"* || "$output" == *"busy"* || "$output" == *"already in use"* ]]; then
+      sleep 0.5
+      continue
+    fi
+
+    return 1
   done
 
   return 1
