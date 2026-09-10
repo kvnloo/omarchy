@@ -512,6 +512,12 @@ Item {
 
     function lock(): string {
       if (!root.passwordPamConfigured) return "missing-pam"
+      if (root.lockRequested && !sessionLock.locked && !sessionLock.secure) {
+        root.lockRequested = false
+        root.pendingSessionLock = false
+        sessionLockStabilizeTimer.stop()
+        pendingSessionLockTimer.stop()
+      }
       if (!root.locked && !root.beginLock()) return "failed"
       return "ok"
     }
