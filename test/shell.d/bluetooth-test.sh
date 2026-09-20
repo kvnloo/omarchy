@@ -149,8 +149,15 @@ device_tmp=$(mktemp -d)
 trap 'rm -rf "$device_tmp"' EXIT
 
 mock_bin="$device_tmp/bin"
-mkdir -p "$mock_bin"
+rfkill_root="$device_tmp/rfkill"
+mkdir -p "$mock_bin" "$rfkill_root"
 export POWERED_FILE="$device_tmp/powered"
+
+mkdir -p "$rfkill_root/rfkill5"
+printf '5\n' >"$rfkill_root/rfkill5/index"
+printf 'hci0\n' >"$rfkill_root/rfkill5/name"
+printf 'bluetooth\n' >"$rfkill_root/rfkill5/type"
+printf '0\n' >"$rfkill_root/rfkill5/soft"
 
 cat >"$mock_bin/bluetoothctl" <<'SH'
 #!/bin/bash
@@ -190,6 +197,7 @@ bluetooth_run() {
   echo "$powered" >"$POWERED_FILE"
   : >"$device_tmp/log"
   PATH="$mock_bin:$ROOT/bin:$PATH" BLUETOOTHCTL_LOG="$device_tmp/log" \
+    OMARCHY_RFKILL_PATH="$rfkill_root" \
     OMARCHY_BLUETOOTH_POWER_WAIT_SECONDS=0 "$@" ||
     fail "$* exits cleanly with Powered: $powered"
   printf '%s' "$device_tmp/log"
@@ -199,12 +207,12 @@ bluetooth_power() {
   bluetooth_run "$1" "$ROOT/bin/omarchy-bluetooth-power" "$2"
 }
 
-# Off has to be the block. A bluetoothctl power off would read the same until the
-# next boot, then quietly come back on.
+# Off persists through the adapter's own rfkill without widening to every
+# Bluetooth-class switch, some of which can physically remove the controller.
 off_log=$(bluetooth_power yes off)
-grep -qx "rfkill block bluetooth" "$off_log" ||
-  fail "bluetooth turns off with an rfkill block" "$(cat "$off_log")"
-pass "bluetooth turns off with an rfkill block"
+grep -qx "rfkill block 5" "$off_log" ||
+  fail "bluetooth turns off through the adapter rfkill" "$(cat "$off_log")"
+pass "bluetooth turns off through the adapter rfkill"
 
 grep -q "power off" "$off_log" &&
   fail "bluetooth does not also power the adapter down" "$(cat "$off_log")"
@@ -228,7 +236,7 @@ pass "bluetooth powers the adapter on when unblocking does not"
 
 # The panel switch reads Powered, so that is what toggle has to invert.
 toggle_on_log=$(bluetooth_power yes toggle)
-grep -qx "rfkill block bluetooth" "$toggle_on_log" ||
+grep -qx "rfkill block 5" "$toggle_on_log" ||
   fail "bluetooth toggles a powered adapter off" "$(cat "$toggle_on_log")"
 pass "bluetooth toggles a powered adapter off"
 
@@ -263,17 +271,25 @@ grep -qx "connect AA:BB:CC:DD:EE:FF" "$unpowered_log" ||
   fail "bluetooth connects once the adapter is up" "$(cat "$unpowered_log")"
 pass "bluetooth connects once the adapter is up"
 
-# Blocking hits every radio at once, so the read has to span them too. A bare
-# bluetoothctl show reports the default controller and misses a powered dongle.
+# The read and write both span controllers. A bare bluetoothctl show reports
+# only the default controller, and a single rfkill index would leave a second
+# adapter powered.
+mkdir -p "$rfkill_root/rfkill6"
+printf '6\n' >"$rfkill_root/rfkill6/index"
+printf 'hci1\n' >"$rfkill_root/rfkill6/name"
+printf 'bluetooth\n' >"$rfkill_root/rfkill6/type"
+printf '0\n' >"$rfkill_root/rfkill6/soft"
 echo yes >"$POWERED_FILE.11:22:33:44:55:66"
 export MOCK_CONTROLLERS="AA:BB:CC:DD:EE:FF 11:22:33:44:55:66"
 multi_log=$(bluetooth_power no toggle)
 unset MOCK_CONTROLLERS
 rm -f "$POWERED_FILE.11:22:33:44:55:66"
 
-grep -qx "rfkill block bluetooth" "$multi_log" ||
-  fail "bluetooth counts a secondary controller as on" "$(cat "$multi_log")"
-pass "bluetooth counts a secondary controller as on"
+grep -qx "rfkill block 5" "$multi_log" ||
+  fail "bluetooth blocks the first adapter when a secondary controller is on" "$(cat "$multi_log")"
+grep -qx "rfkill block 6" "$multi_log" ||
+  fail "bluetooth blocks the secondary adapter too" "$(cat "$multi_log")"
+pass "bluetooth counts and blocks every live controller"
 
 # AutoEnable=false was the old attempt at persistence and never worked. Left set,
 # it would also keep bluetoothd from powering the adapter up after an unblock.

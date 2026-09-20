@@ -17,6 +17,7 @@
 # `bluetoothctl power on` fails outright while the block is set.
 
 POWER_WAIT_SECONDS=${OMARCHY_BLUETOOTH_POWER_WAIT_SECONDS:-2}
+RFKILL_PATH="${OMARCHY_RFKILL_PATH:-/sys/class/rfkill}"
 
 controllers() {
   timeout 2s bluetoothctl list 2>/dev/null | awk '{print $2}'
@@ -48,6 +49,33 @@ wait_powered() {
   done
 }
 
+adapter_rfkill_ids() {
+  local device
+
+  shopt -s nullglob
+  for device in "$RFKILL_PATH"/rfkill*; do
+    [[ -f $device/type && -f $device/name && -f $device/index ]] || continue
+    [[ $(< "$device/type") == "bluetooth" ]] || continue
+    [[ $(< "$device/name") == hci* ]] || continue
+    cat "$device/index"
+  done
+}
+
+power_off() {
+  local ids=()
+  local id
+
+  mapfile -t ids < <(adapter_rfkill_ids)
+  if (( ${#ids[@]} == 0 )); then
+    echo "omarchy-bluetooth-power: no Bluetooth adapter rfkill is available" >&2
+    return 1
+  fi
+
+  for id in "${ids[@]}"; do
+    rfkill block "$id"
+  done
+}
+
 power_on() {
   rfkill unblock bluetooth
 
@@ -68,13 +96,15 @@ case "${1:-}" in
     power_on
     ;;
   off)
-    # No bluetoothctl power off to go with this: the block already drops the
-    # adapter to Powered: no, and it is the half that survives the reboot.
-    rfkill block bluetooth
+    # Block only the HCI adapter rfkills. A type-wide Bluetooth block also
+    # reaches platform master switches (thinkpad_acpi, dell-laptop, etc.) that
+    # can physically remove the controller from USB. The adapter rfkill keeps
+    # the controller present and systemd-rfkill still persists its soft state.
+    power_off
     ;;
   toggle)
     if powered; then
-      rfkill block bluetooth
+      power_off
     else
       power_on
     fi
