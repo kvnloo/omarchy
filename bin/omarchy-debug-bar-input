@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# omarchy:summary=Capture bar pointer and hit-test diagnostics
+# omarchy:group=debug
+
+section() {
+  printf '\n== %s ==\n' "$1"
+}
+
+section "Time"
+date -Is
+
+section "Hyprland cursor"
+hyprctl cursorpos 2>&1 || true
+
+section "Bar input snapshot"
+omarchy-shell shell debugBarInput 2>&1 | jq . 2>/dev/null || omarchy-shell shell debugBarInput 2>&1 || true
+
+section "Bar geometry"
+omarchy-shell shell debugBarGeometry 2>&1 | jq . 2>/dev/null || omarchy-shell shell debugBarGeometry 2>&1 || true
+
+section "Bar layout"
+omarchy-shell shell listShellConfig 2>&1 | jq '.bar' 2>/dev/null || omarchy-shell shell listShellConfig 2>&1 || true
+
+section "Hyprland layers"
+hyprctl layers 2>&1 || true
+
+section "Hyprland monitors"
+hyprctl monitors -j 2>/dev/null \
+  | jq '[.[] | {name, x, y, width, height, scale, transform, reserved, focused}]' 2>/dev/null \
+  || hyprctl monitors 2>&1 \
+  || true

@@ -400,6 +400,66 @@ Item {
     return !!target && target.visible !== false && target.opacity !== 0 && target.tooltipHovered === true
   }
 
+  function targetModuleSlot(target) {
+    var current = target
+    while (current) {
+      for (var i = 0; i < moduleSlots.length; i++) {
+        var slot = moduleSlots[i]
+        if (slot && slot.activeItem === current) return slot
+      }
+      current = current.parent
+    }
+    return null
+  }
+
+  // Read-only snapshot for intermittent bar input bugs. It samples the
+  // HoverHandler that already exists on every ModuleSlot, so invoking this
+  // does not add another pointer grab or change the bar's input region.
+  function debugBarInput() {
+    var out = []
+    for (var i = 0; i < moduleSlots.length; i++) {
+      var slot = moduleSlots[i]
+      if (!slot || !slot.activeItem) continue
+
+      var window = slotWindow(slot)
+      var screen = window && window.screen ? window.screen : null
+      var directHovered = []
+      for (var j = 0; j < clickTargets.length; j++) {
+        var clickTarget = clickTargets[j]
+        if (!targetTooltipHovered(clickTarget)) continue
+        if (window && !targetBelongsToWindow(clickTarget, window)) continue
+        var owner = targetModuleSlot(clickTarget)
+        if (owner === slot) directHovered.push(String(owner.moduleName || ""))
+      }
+
+      var resolvedTarget = null
+      var resolvedSlot = null
+      if (slot.pointerHovered) {
+        resolvedTarget = moduleClickTargetAt(slot, slot.pointerX, slot.pointerY)
+        resolvedSlot = targetModuleSlot(resolvedTarget)
+      }
+
+      out.push({
+        id: String(slot.moduleName || ""),
+        section: String(slot.region || ""),
+        screen: screen ? String(screen.name || "") : "",
+        screenX: screen ? Math.round(Number(screen.x) || 0) : 0,
+        screenY: screen ? Math.round(Number(screen.y) || 0) : 0,
+        windowWidth: window ? Math.round(Number(window.width) || 0) : 0,
+        windowHeight: window ? Math.round(Number(window.height) || 0) : 0,
+        hovered: slot.pointerHovered === true,
+        pointerX: slot.pointerHovered ? Math.round(slot.pointerX * 100) / 100 : null,
+        pointerY: slot.pointerHovered ? Math.round(slot.pointerY * 100) / 100 : null,
+        sceneX: slot.pointerHovered ? Math.round(slot.pointerSceneX * 100) / 100 : null,
+        sceneY: slot.pointerHovered ? Math.round(slot.pointerSceneY * 100) / 100 : null,
+        pressedButtons: slot.pointerHovered ? slot.pointerButtons : 0,
+        leftTarget: resolvedSlot ? String(resolvedSlot.moduleName || "") : "",
+        directHovered: directHovered
+      })
+    }
+    return out
+  }
+
   function clearTooltip() {
     tooltipTimer.stop()
     pendingTooltipTarget = null
@@ -1799,6 +1859,12 @@ Item {
       return componentLoader.item
     }
     readonly property bool hovered: moduleHover.hovered
+    readonly property bool pointerHovered: moduleHover.hovered
+    readonly property real pointerX: moduleHover.hovered ? moduleHover.point.position.x : -1
+    readonly property real pointerY: moduleHover.hovered ? moduleHover.point.position.y : -1
+    readonly property real pointerSceneX: moduleHover.hovered ? moduleHover.point.scenePosition.x : -1
+    readonly property real pointerSceneY: moduleHover.hovered ? moduleHover.point.scenePosition.y : -1
+    readonly property int pointerButtons: moduleHover.hovered ? moduleHover.point.pressedButtons : 0
     readonly property bool dragSource: root.barDragSource === slot
     readonly property bool panelOpen: root.activePopout === slot.activeItem
     // Modules bigger than the mark they want (a text label in a padded slot,
