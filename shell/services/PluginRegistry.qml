@@ -725,6 +725,24 @@ QtObject {
     initProcess.running = true
   }
 
+  // Automatic reload owns the declarative plugin definition, not mutable
+  // runtime state. A plugin may keep caches, databases, downloaded helpers or
+  // logs under its checkout without turning every write into a shell rebuild.
+  // QML/JS/module metadata and the manifest are the files that can change the
+  // component graph. Top-level entry changes still rescan so add/remove works.
+  function localPluginPathAffectsReload(pluginPath) {
+    var relative = String(pluginPath || "")
+    if (relative === "") return true
+
+    var name = relative.slice(relative.lastIndexOf("/") + 1)
+    if (name === "manifest.json" || name === "qmldir") return true
+
+    var lower = name.toLowerCase()
+    return lower.endsWith(".qml")
+      || lower.endsWith(".js")
+      || lower.endsWith(".mjs")
+  }
+
   function localPluginIdForPath(filePath) {
     var base = pluginsDir.replace(/\/$/, "") + "/"
     var path = String(filePath || "").trim()
@@ -736,7 +754,9 @@ QtObject {
     if (relative.indexOf("/.git/") !== -1 || relative.endsWith("/.git")) return ""
 
     var slash = relative.indexOf("/")
-    return slash === -1 ? relative : relative.slice(0, slash)
+    var pluginId = slash === -1 ? relative : relative.slice(0, slash)
+    var pluginPath = slash === -1 ? "" : relative.slice(slash + 1)
+    return localPluginPathAffectsReload(pluginPath) ? pluginId : ""
   }
 
   Component.onCompleted: ensureUserDir()
