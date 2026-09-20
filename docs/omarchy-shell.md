@@ -80,6 +80,8 @@ widgets that omit it default to `center`.
 
 Plugins run as **unsandboxed code** inside `omarchy-shell`. Adding warns you before cloning, plugins land disabled so you can review the code before `omarchy plugin enable`, and updates show a diff before touching anything. Commands confirm in a terminal even when given arguments; without one they refuse rather than guess. Add `--yes` to skip every prompt (the path for scripts and agents). The scoped interfaces remove direct access to authentication services and avoid handing generic cross-plugin service factories to replacement bars, but visual plugins can still traverse ordinary objects in their shared QML scene. Plugin code also has the same user-level file and process access as the shell.
 
+Local plugin hot reload watches the plugin's declarative source boundary: `manifest.json`, `qmldir`, and `*.qml` / `*.js` / `*.mjs` files. Mutable runtime state is not a shell definition and does not trigger a reload. Plugins should keep durable state under `$XDG_STATE_HOME`, caches under `$XDG_CACHE_HOME`, and user-editable configuration under `$XDG_CONFIG_HOME` rather than relying on writes inside their checkout to reload the shell. Helper binaries and scripts are executed from disk on their next invocation and likewise do not require a shell rebuild.
+
 You can still install by hand: drop a plugin into
 `~/.config/omarchy/plugins/<id>/`, run `omarchy-shell shell rescanPlugins`, then
 `omarchy plugin enable <id>`. A bar widget starts in its declared default
