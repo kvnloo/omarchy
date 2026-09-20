@@ -7,14 +7,60 @@ section() {
   printf '\n== %s ==\n' "$1"
 }
 
+cursor_raw=$(hyprctl cursorpos 2>/dev/null || true)
+cursor_x=$(awk -F, '{ gsub(/^[[:space:]]+|[[:space:]]+$/, "", $1); print $1 }' <<<"$cursor_raw")
+cursor_y=$(awk -F, '{ gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2 }' <<<"$cursor_raw")
+snapshot=$(omarchy-shell shell debugBarInput 2>/dev/null || true)
+
 section "Time"
 date -Is
 
+section "Capture verdict"
+if [[ $cursor_x =~ ^-?[0-9]+([.][0-9]+)?$ && $cursor_y =~ ^-?[0-9]+([.][0-9]+)?$ ]] && jq -e . >/dev/null 2>&1 <<<"$snapshot"; then
+  jq -r --argjson x "$cursor_x" --argjson y "$cursor_y" '
+    . as $slots
+    | [$slots[]
+        | select(
+            $x >= .visualX
+            and $x <= (.visualX + .visualWidth)
+            and $y >= .visualY
+            and $y <= (.visualY + .visualHeight)
+          )] as $visual
+    | [$slots[] | select(.hovered)] as $hovered
+    | [$hovered[] | select(.leftTarget != "" and .leftTarget != .id)] as $wrong
+    | [$hovered[] | select(.leftTarget == "")] as $missing
+    | if (($visual | length) > 0 and ($hovered | length) == 0) then
+        "VISUAL_INPUT_DIVERGENCE: compositor cursor is over " +
+        ($visual | map(.id) | join(", ")) +
+        " visually, but no ModuleSlot HoverHandler sees it. This points below the bar QML hit-test path."
+      elif (($wrong | length) > 0) then
+        "LEFT_TARGET_DIVERGENCE: Qt sees " +
+        ($wrong | map(.id) | join(", ")) +
+        " hovered, but the synthetic left-click resolver selects " +
+        ($wrong | map(.leftTarget) | join(", ")) + "."
+      elif (($missing | length) > 0) then
+        "LEFT_TARGET_MISSING: Qt sees " +
+        ($missing | map(.id) | join(", ")) +
+        " hovered, but the left-click resolver finds no target."
+      elif (($hovered | length) > 0) then
+        "PATHS_AGREE_AT_CAPTURE: Qt hover and left-click resolution agree for " +
+        ($hovered | map(.id) | join(", ")) +
+        ". If the click still fails, investigate the target action/panel lifecycle rather than geometry."
+      elif (($visual | length) == 0) then
+        "NO_BAR_SLOT_UNDER_CURSOR: place the pointer directly over the failing visible icon and run this command again."
+      else
+        "INCONCLUSIVE: capture the failure again with the pointer directly over the affected icon."
+      end
+  ' <<<"$snapshot"
+else
+  echo "INCONCLUSIVE: could not correlate Hyprland cursor coordinates with the shell snapshot."
+fi
+
 section "Hyprland cursor"
-hyprctl cursorpos 2>&1 || true
+printf '%s\n' "$cursor_raw"
 
 section "Bar input snapshot"
-omarchy-shell shell debugBarInput 2>&1 | jq . 2>/dev/null || omarchy-shell shell debugBarInput 2>&1 || true
+jq . <<<"$snapshot" 2>/dev/null || printf '%s\n' "$snapshot"
 
 section "Bar geometry"
 omarchy-shell shell debugBarGeometry 2>&1 | jq . 2>/dev/null || omarchy-shell shell debugBarGeometry 2>&1 || true
