@@ -10,14 +10,15 @@
 # this as a tri-state must never take a failed query for false.
 #
 # FALLBACK is Hyprland's own placeholder: an enabled headless output, under a
-# name the compositor reserves, used when no real output remains. It is not a
-# monitor: counting it would answer "external active" in exactly the recovery
-# states the monitor helpers exist for.
+# name the compositor reserves, used when no real output remains. Omarchy also
+# reserves OMARCHY-VIRTUAL-* for virtual displays it creates for testing,
+# remote desktops, and agent workspaces. Neither is evidence that a physical
+# external monitor is connected, so neither may drive clamshell recovery.
 if ! monitors=$(hyprctl monitors all -j); then
   exit 2
 fi
 
-jq -e 'any(.[] | select(.name | test("^(eDP|LVDS|DSI)-") | not) | select(.name != "FALLBACK") | select(.disabled == false); true)' <<<"$monitors" >/dev/null 2>&1
+jq -e 'any(.[] | select(.name | test("^(eDP|LVDS|DSI)-") | not) | select(.name != "FALLBACK") | select(.name | startswith("OMARCHY-VIRTUAL-") | not) | select(.disabled == false); true)' <<<"$monitors" >/dev/null 2>&1
 case $? in
   0) exit 0 ;;
   1) exit 1 ;;
