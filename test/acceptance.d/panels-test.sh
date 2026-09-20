@@ -103,10 +103,9 @@ wait_until "keyboard-navigated panel closes" 15 layer_absent "omarchy-keyboard-p
 # OnDemand behavior, which would leave Escape in the previously focused app.
 omarchy-shell shell summon omarchy.bluetooth >/dev/null
 wait_until "focus-prime panel opens" 15 layer_present "omarchy-keyboard-panel"
-if (( $(hyprctl -j monitors | jq length) == 1 )); then
-  layer_absent "omarchy-keyboard-panel-dismiss" || fail "single-monitor panel has no dismissal twin"
-  pass "single-monitor panel has no dismissal twin"
-fi
+layer_absent "omarchy-keyboard-panel-dismiss" ||
+  fail "keyboard panels need no per-monitor dismissal surfaces"
+pass "keyboard panels need no per-monitor dismissal surfaces"
 omarchy-shell shell hide omarchy.bluetooth >/dev/null
 omarchy-shell shell summon omarchy.bluetooth >/dev/null
 wait_until "focus-prime panel reopens" 15 layer_present "omarchy-keyboard-panel"

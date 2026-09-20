@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Wayland
 import qs.Commons
 
@@ -30,10 +31,10 @@ import qs.Commons
 // parallel axis (along-the-bar) uses the anchor's content x/y since the
 // bar spans full screen on that axis.
 //
-// Outside-click dismissal: an overlay MouseArea catches clicks, with the
-// QsWindow.mask subtracting the bar strip so clicks on the bar still
-// reach the bar widgets (activePopout coordinator hands off to another
-// popup if the user clicks a different bar icon).
+// Outside-click dismissal is owned by Hyprland's focus grab. The layer surface
+// accepts pointer input only over the visible card, so bar/application clicks
+// stay on their real surfaces instead of being reimplemented through a second
+// synthetic hit-test path.
 PanelWindow {
   id: root
 
@@ -113,17 +114,19 @@ PanelWindow {
     right: true
   }
 
-  // Clickable region is the whole screen. Clicks in the bar strip are
-  // forwarded to registered bar buttons so switching between panel icons
-  // works in one click even when the overlay surface is above the bar.
-  readonly property real _barStripSize: {
-    if (!bar) return 0
-    var actual = (root.barPos === "top" || root.barPos === "bottom") ? root.barH : root.barW
-    return Math.max(bar.barSize, actual) + root.gap
-  }
-  mask: Region {
-    width: root.screenW
-    height: root.screenH
+  // The backing layer stays full-screen for stable card positioning and
+  // keyboard focus, but only the visible card participates in pointer hit
+  // testing. Everything else passes through to the real surface below.
+  mask: Region { item: card }
+
+  // Once the brief Exclusive keyboard-focus prime has settled to OnDemand,
+  // let Hyprland own outside-click dismissal. The anchor bar is whitelisted so
+  // switching directly to another bar panel remains a one-click operation.
+  // A click anywhere else, including another monitor, clears the grab.
+  HyprlandFocusGrab {
+    active: root.open && root.focusPrimed
+    windows: root.anchorWindow ? [root, root.anchorWindow] : [root]
+    onCleared: if (root.open) root.close()
   }
 
   // Track every layout change between the bar's contentItem and the
@@ -270,109 +273,9 @@ PanelWindow {
     onTriggered: root.popoutSwitchClosing = false
   }
 
-  // --- outside-click dismissal --------------------------------------------
-
-  // Catches clicks anywhere in the clickable region (i.e. everywhere on
-  // screen except the bar strip, which is masked out). The card has its
-  // own MouseArea below so clicks on it don't bubble up here. Disabled
-  // during the fade-out so the dying overlay doesn't swallow clicks that
-  // were meant for the apps behind it.
-  MouseArea {
-    id: dismissArea
-    anchors.fill: parent
-    enabled: root.open
-    acceptedButtons: Qt.AllButtons
-    hoverEnabled: true
-    property bool hoveringBar: false
-    cursorShape: hoveringBar ? Qt.PointingHandCursor : Qt.ArrowCursor
-
-    function inBarRegion(px, py) {
-      if (root.barPos === "bottom") return py >= root.screenH - root._barStripSize
-      if (root.barPos === "left") return px <= root._barStripSize
-      if (root.barPos === "right") return px >= root.screenW - root._barStripSize
-      return py <= root._barStripSize
-    }
-
-    function barPoint(px, py) {
-      if (root.barPos === "bottom") return Qt.point(px, py - (root.screenH - root.barH))
-      if (root.barPos === "right") return Qt.point(px - (root.screenW - root.barW), py)
-      return Qt.point(px, py)
-    }
-
-    function pressTargetAt(px, py) {
-      if (!root.anchorWindow || !root.anchorWindow.contentItem || !root.bar || !root.bar.clickTargets) return null
-      var p = barPoint(px, py)
-      var targets = root.bar.clickTargets
-      for (var i = targets.length - 1; i >= 0; i--) {
-        var target = targets[i]
-        if (!target || !target.triggerPress || target.visible === false || target.opacity === 0 || !target.mapToItem) continue
-        if (root.bar.targetBelongsToWindow && !root.bar.targetBelongsToWindow(target, root.anchorWindow)) continue
-        var pos = root.anchorWindow.itemPosition(target)
-        if (p.x >= pos.x && p.x <= pos.x + target.width && p.y >= pos.y && p.y <= pos.y + target.height) return target
-      }
-      return null
-    }
-
-    function forwardBarClick(px, py, button) {
-      if (button !== Qt.LeftButton && button !== Qt.RightButton && button !== Qt.MiddleButton) return false
-      var target = pressTargetAt(px, py)
-      if (!target) return false
-      target.triggerPress(button)
-      return true
-    }
-
-    onPositionChanged: function(mouse) { hoveringBar = inBarRegion(mouse.x, mouse.y) }
-    onExited: hoveringBar = false
-    onClicked: function(mouse) {
-      // While Exclusive is priming, Hyprland may route a click from another
-      // output here with translated coordinates. Never interpret that as a
-      // click on this output's bar.
-      if (root.focusPrimed && inBarRegion(mouse.x, mouse.y) && forwardBarClick(mouse.x, mouse.y, mouse.button)) return
-      root.close()
-    }
-  }
-
-  // The panel surface only spans the anchor's screen, and the compositor
-  // hit-tests pointer input per output, so `dismissArea` above can never see
-  // a click on another monitor. Give every other output a transparent twin
-  // whose only job is to catch that click. They exist only while the panel is
-  // logically open (not during the fade-out, matching `dismissArea.enabled`).
-  //
-  // Keyboard focus is None: these must catch the pointer without taking focus
-  // from the panel when the cursor merely crosses onto their output.
-  Variants {
-    model: root.open ? Quickshell.screens : []
-
-    delegate: Component {
-      PanelWindow {
-        required property var modelData
-
-        screen: modelData
-        // Compare by output name: the anchor screen must be known before any
-        // twin maps, or a twin would cover the panel's own output.
-        visible: root.open && !!root.screen && modelData.name !== root.screen.name
-        color: "transparent"
-        exclusionMode: ExclusionMode.Ignore
-
-        WlrLayershell.namespace: "omarchy-keyboard-panel-dismiss"
-        WlrLayershell.layer: WlrLayer.Overlay
-        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-
-        anchors {
-          top: true
-          bottom: true
-          left: true
-          right: true
-        }
-
-        MouseArea {
-          anchors.fill: parent
-          acceptedButtons: Qt.AllButtons
-          onPressed: root.close()
-        }
-      }
-    }
-  }
+  // Outside-click dismissal is handled by HyprlandFocusGrab above. Keeping
+  // the input mask scoped to the card means there is no full-screen dismissal
+  // MouseArea and no per-monitor dismissal surface to construct or destroy.
 
   // --- card ----------------------------------------------------------------
 
