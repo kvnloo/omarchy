@@ -439,6 +439,9 @@ Item {
         resolvedSlot = targetModuleSlot(resolvedTarget)
       }
 
+      var visualOrigin = slot.mapToItem(null, 0, 0)
+      var visualPoint = windowScreenPoint(visualOrigin, window)
+
       out.push({
         id: String(slot.moduleName || ""),
         section: String(slot.region || ""),
@@ -447,6 +450,10 @@ Item {
         screenY: screen ? Math.round(Number(screen.y) || 0) : 0,
         windowWidth: window ? Math.round(Number(window.width) || 0) : 0,
         windowHeight: window ? Math.round(Number(window.height) || 0) : 0,
+        visualX: Math.round(Number(visualPoint.x) * 100) / 100,
+        visualY: Math.round(Number(visualPoint.y) * 100) / 100,
+        visualWidth: Math.round(Number(slot.width || 0) * 100) / 100,
+        visualHeight: Math.round(Number(slot.height || 0) * 100) / 100,
         hovered: slot.pointerHovered === true,
         pointerX: slot.pointerHovered ? Math.round(slot.pointerX * 100) / 100 : null,
         pointerY: slot.pointerHovered ? Math.round(slot.pointerY * 100) / 100 : null,
