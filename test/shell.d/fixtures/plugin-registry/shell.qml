@@ -452,8 +452,16 @@ ShellRoot {
     root.assertTrue(registry.isEnabled("omarchy.hybrid"), "a multi-kind built-in remains loadable without its widget")
 
     var cloneBase = registry.pluginsDir + "/dhh.clock"
-    root.assertEqual(registry.localPluginIdForPath(cloneBase + "/BarWidget.qml"), "dhh.clock", "personal clone changes are watched")
-    root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/acme.clock/BarWidget.qml"), "acme.clock", "installed plugin changes are watched")
+    root.assertEqual(registry.localPluginIdForPath(cloneBase + "/BarWidget.qml"), "dhh.clock", "personal clone QML changes are watched")
+    root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/acme.clock/lib/Model.js"), "acme.clock", "nested plugin JavaScript changes are watched")
+    root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/acme.clock/lib/helpers.mjs"), "acme.clock", "nested plugin modules are watched")
+    root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/acme.clock/manifest.json"), "acme.clock", "plugin manifest changes are watched")
+    root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/acme.clock/qmldir"), "acme.clock", "QML module metadata changes are watched")
+    root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/new.plugin"), "new.plugin", "top-level plugin entry changes are watched")
+    root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/acme.clock/data.json"), "", "plugin runtime JSON does not rebuild the shell")
+    root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/acme.clock/cache/vault.db"), "", "plugin runtime databases do not rebuild the shell")
+    root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/acme.clock/logs/plugin.log"), "", "plugin logs do not rebuild the shell")
+    root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/acme.clock/bin/helper"), "", "downloaded helpers do not rebuild the shell")
     root.assertEqual(registry.localPluginIdForPath(cloneBase + "/.git/index"), "", "plugin git metadata is ignored")
     root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/.clone.abc123/manifest.json"), "", "hidden staging and backup dirs are ignored")
 
