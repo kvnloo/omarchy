@@ -66,7 +66,9 @@ EOF
 }
 
 verify_fingerprint() {
-  local attempt output
+  local attempt output status
+  local output_file
+  output_file=$(mktemp)
 
   # Some readers are still owned by the enroll operation for a moment after it
   # returns. Give that handoff one settle interval, then retry only errors that
@@ -75,20 +77,30 @@ verify_fingerprint() {
   sleep 0.5
 
   for attempt in 1 2 3 4 5; do
-    if output=$(fprintd-verify 2>&1); then
-      printf '%s\n' "$output"
+    : >"$output_file"
+
+    # Keep fprintd's interactive prompts visible while retaining its output for
+    # failure classification. The pipeline itself succeeds through tee; inspect
+    # fprintd's PIPESTATUS explicitly.
+    fprintd-verify 2>&1 | tee "$output_file"
+    status=${PIPESTATUS[0]}
+
+    if (( status == 0 )); then
+      rm -f "$output_file"
       return 0
     fi
 
-    printf '%s\n' "$output"
+    output=$(<"$output_file")
     if [[ $output == *"failed to claim"* || $output == *"busy"* || $output == *"already in use"* ]]; then
       (( attempt < 5 )) && sleep 0.5
       continue
     fi
 
+    rm -f "$output_file"
     return 1
   done
 
+  rm -f "$output_file"
   return 1
 }
 
