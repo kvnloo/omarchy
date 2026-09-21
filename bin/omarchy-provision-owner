@@ -614,8 +614,23 @@ confirm_reboot() {
 # reads, matching what the ISO's configure_keyboard does at install time. A
 # keymap localectl doesn't know keeps the default rather than failing (defensive;
 # the picker no longer offers any such layout).
+set_vconsole_value() {
+  local key="$1"
+  local value="$2"
+  local file="${OMARCHY_VCONSOLE_CONF:-/etc/vconsole.conf}"
+
+  if grep -q "^$key=" "$file" 2>/dev/null; then
+    sed -i "s/^$key=.*/$key=$value/" "$file"
+  else
+    printf '%s=%s\n' "$key" "$value" >>"$file"
+  fi
+}
+
 apply_keyboard() {
   local keymap="$1"
+  local layout=""
+  local variant=""
+
   [[ $(tty 2>/dev/null) == /dev/tty* ]] && loadkeys "$keymap" 2>/dev/null || true
 
   if localectl --no-pager list-keymaps 2>/dev/null | grep -qix "$keymap"; then
@@ -624,6 +639,20 @@ apply_keyboard() {
       log_step "could not persist keymap $keymap"
   else
     log_step "keymap $keymap unknown to localectl; keeping the default"
+  fi
+
+  # Colemak and Dvorak are console keymap names but XKB variants of the us
+  # layout. Hyprland reads these two coordinates from vconsole.conf.
+  case "$keymap" in
+    colemak | dvorak)
+      layout=us
+      variant="$keymap"
+      ;;
+  esac
+
+  if [[ -n $layout ]]; then
+    set_vconsole_value XKBLAYOUT "$layout"
+    set_vconsole_value XKBVARIANT "$variant"
   fi
 }
 
