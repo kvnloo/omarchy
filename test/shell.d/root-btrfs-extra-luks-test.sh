@@ -89,6 +89,9 @@ two_device_show=$'Label: none  uuid: 00000000-0000-0000-0000-000000000000\n     
 
 single_device_show=$'Label: none  uuid: 00000000-0000-0000-0000-000000000000\n        Total devices 1 FS bytes used 1.00GiB\n        devid    1 size 10.00GiB used 2.00GiB path /dev/mapper/root'
 
+same_luks_members_show=$'Label: none  uuid: 00000000-0000-0000-0000-000000000000\n        Total devices 2 FS bytes used 1.00GiB\n        devid    1 size 10.00GiB used 2.00GiB path /dev/mapper/root\n        devid    2 size 10.00GiB used 0.00GiB path /dev/mapper/extra-same'
+
+
 plain_extra_show=
 set +e
 TEST_BTRFS_SHOW="$two_device_show" run_helper
@@ -126,143 +129,6 @@ set -e
 [[ -z $(<"$test_tmp/out") && -z $(<"$test_tmp/err") ]] ||
   fail "same-LUKS members emit nothing" "out=$(<"$test_tmp/out") err=$(<"$test_tmp/err")"
 pass "multiple Btrfs members behind the same LUKS container are silent"
-
-missing_bin="$test_tmp/missing"
-mkdir -p "$missing_bin"
-set +e
-PATH="$missing_bin:$ROOT/bin" "$helper" >"$test_tmp/out" 2>"$test_tmp/err"
-status=$?
-set -e
-(( status == 0 )) || fail "missing btrfs is fail-open" "status=$status"
-[[ -z $(<"$test_tmp/out") && -z $(<"$test_tmp/err") ]] ||
-  fail "missing btrfs stays silent"
-pass "missing btrfs is fail-open and silent"
-
-set +e
-TEST_FSTYPE=ext4 TEST_BTRFS_SHOW="$two_device_show" run_helper
-status=$?
-set -e
-(( status == 0 )) || fail "non-btrfs root is silent" "status=$status"
-pass "non-btrfs root is silent"
-
-# findmnt SOURCE can be /dev/dm-N while `btrfs filesystem show` prints the
-# mapper name; both still sit on the same crypto_LUKS ancestor.
-same_luks_aliased_show=$'Label: none  uuid: 00000000-0000-0000-0000-000000000000\n        Total devices 2 FS bytes used 1.00GiB\n        devid    1 size 10.00GiB used 2.00GiB path /dev/mapper/root\n        devid    2 size 10.00GiB used 0.00GiB path /dev/sdb'
-set +e
-TEST_SOURCE=/dev/dm-0 TEST_BTRFS_SHOW="$same_luks_aliased_show" run_helper
-status=$?
-set -e
-(( status == 0 )) || fail "same-LUKS mapper alias is silent" "status=$status"
-[[ -z $(<"$test_tmp/out") && -z $(<"$test_tmp/err") ]] ||
-  fail "same-LUKS mapper alias emits nothing"
-pass "same-LUKS mapper alias is silent"
-
-set +e
-TEST_SOURCE=/dev/dm-0 TEST_BTRFS_SHOW="$two_device_show" run_helper
-status=$?
-set -e
-(( status == 1 )) || fail "aliased root still warns on extra LUKS" "status=$status"
-grep -q "root Btrfs spans extra LUKS devices" "$test_tmp/err" ||
-  fail "aliased root still prints the extra-LUKS warning"
-pass "aliased root still warns on extra LUKS"
-Label: none  uuid: 00000000-0000-0000-0000-000000000000\n        Total devices 2 FS bytes used 1.00GiB\n        devid    1 size 10.00GiB used 2.00GiB path /dev/mapper/root\n        devid    2 size 10.00GiB used 0.00GiB path /dev/sdb'
-
-same_luks_members_show=
-set +e
-TEST_BTRFS_SHOW="$two_device_show" run_helper
-status=$?
-set -e
-(( status == 1 )) || fail "two-device extra LUKS exits 1" "status=$status"
-[[ -z $(<"$test_tmp/out") ]] || fail "two-device extra LUKS is silent on stdout"
-grep -q "root Btrfs spans extra LUKS devices" "$test_tmp/err" ||
-  fail "two-device extra LUKS prints a warning" "$(<"$test_tmp/err")"
-pass "two-device extra LUKS warns and exits 1"
-
-set +e
-TEST_BTRFS_SHOW="$single_device_show" run_helper
-status=$?
-set -e
-(( status == 0 )) || fail "single-device root is silent" "status=$status"
-[[ -z $(<"$test_tmp/out") && -z $(<"$test_tmp/err") ]] ||
-  fail "single-device root emits nothing" "out=$(<"$test_tmp/out") err=$(<"$test_tmp/err")"
-pass "single-device root is silent"
-
-set +e
-TEST_BTRFS_SHOW="$plain_extra_show" run_helper
-status=$?
-set -e
-(( status == 0 )) || fail "plain extra member is silent" "status=$status"
-[[ -z $(<"$test_tmp/out") && -z $(<"$test_tmp/err") ]] ||
-  fail "plain extra member emits nothing"
-pass "plain extra member is silent"
-
-missing_bin="$test_tmp/missing"
-mkdir -p "$missing_bin"
-set +e
-PATH="$missing_bin:$ROOT/bin" "$helper" >"$test_tmp/out" 2>"$test_tmp/err"
-status=$?
-set -e
-(( status == 0 )) || fail "missing btrfs is fail-open" "status=$status"
-[[ -z $(<"$test_tmp/out") && -z $(<"$test_tmp/err") ]] ||
-  fail "missing btrfs stays silent"
-pass "missing btrfs is fail-open and silent"
-
-set +e
-TEST_FSTYPE=ext4 TEST_BTRFS_SHOW="$two_device_show" run_helper
-status=$?
-set -e
-(( status == 0 )) || fail "non-btrfs root is silent" "status=$status"
-pass "non-btrfs root is silent"
-
-# findmnt SOURCE can be /dev/dm-N while `btrfs filesystem show` prints the
-# mapper name; both still sit on the same crypto_LUKS ancestor.
-same_luks_aliased_show=$'Label: none  uuid: 00000000-0000-0000-0000-000000000000\n        Total devices 2 FS bytes used 1.00GiB\n        devid    1 size 10.00GiB used 2.00GiB path /dev/mapper/root\n        devid    2 size 10.00GiB used 0.00GiB path /dev/sdb'
-set +e
-TEST_SOURCE=/dev/dm-0 TEST_BTRFS_SHOW="$same_luks_aliased_show" run_helper
-status=$?
-set -e
-(( status == 0 )) || fail "same-LUKS mapper alias is silent" "status=$status"
-[[ -z $(<"$test_tmp/out") && -z $(<"$test_tmp/err") ]] ||
-  fail "same-LUKS mapper alias emits nothing"
-pass "same-LUKS mapper alias is silent"
-
-set +e
-TEST_SOURCE=/dev/dm-0 TEST_BTRFS_SHOW="$two_device_show" run_helper
-status=$?
-set -e
-(( status == 1 )) || fail "aliased root still warns on extra LUKS" "status=$status"
-grep -q "root Btrfs spans extra LUKS devices" "$test_tmp/err" ||
-  fail "aliased root still prints the extra-LUKS warning"
-pass "aliased root still warns on extra LUKS"
-Label: none  uuid: 00000000-0000-0000-0000-000000000000\n        Total devices 2 FS bytes used 1.00GiB\n        devid    1 size 10.00GiB used 2.00GiB path /dev/mapper/root\n        devid    2 size 10.00GiB used 0.00GiB path /dev/mapper/extra-same'
-
-set +e
-TEST_BTRFS_SHOW="$two_device_show" run_helper
-status=$?
-set -e
-(( status == 1 )) || fail "two-device extra LUKS exits 1" "status=$status"
-[[ -z $(<"$test_tmp/out") ]] || fail "two-device extra LUKS is silent on stdout"
-grep -q "root Btrfs spans extra LUKS devices" "$test_tmp/err" ||
-  fail "two-device extra LUKS prints a warning" "$(<"$test_tmp/err")"
-pass "two-device extra LUKS warns and exits 1"
-
-set +e
-TEST_BTRFS_SHOW="$single_device_show" run_helper
-status=$?
-set -e
-(( status == 0 )) || fail "single-device root is silent" "status=$status"
-[[ -z $(<"$test_tmp/out") && -z $(<"$test_tmp/err") ]] ||
-  fail "single-device root emits nothing" "out=$(<"$test_tmp/out") err=$(<"$test_tmp/err")"
-pass "single-device root is silent"
-
-set +e
-TEST_BTRFS_SHOW="$plain_extra_show" run_helper
-status=$?
-set -e
-(( status == 0 )) || fail "plain extra member is silent" "status=$status"
-[[ -z $(<"$test_tmp/out") && -z $(<"$test_tmp/err") ]] ||
-  fail "plain extra member emits nothing"
-pass "plain extra member is silent"
 
 missing_bin="$test_tmp/missing"
 mkdir -p "$missing_bin"
