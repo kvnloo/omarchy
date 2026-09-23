@@ -112,14 +112,17 @@ BarWidget {
   function close() {
     managePopupOpen = false
     trayMenuOpen = false
+    // Clearing the active item cancels any late onChildrenChanged open so a
+    // dismissed menu (or another bar popup) cannot reopen without a click.
+    activeTrayItem = null
+    activeTrayAnchor = null
   }
 
   function openTrayMenu(item, anchorItem, mouse) {
-    if (!item || !item.menu) {
-      var point = anchorItem.QsWindow.contentItem.mapFromItem(anchorItem, mouse.x, mouse.y)
-      item.display(anchorItem.QsWindow.window, point.x, point.y)
-      return
-    }
+    // Unready SNI (Menu/IconName Get still failing) has no menu handle.
+    // Taking the popup grab before QsMenuOpener has children leaves an empty
+    // input owner over the bar, so an unready item is a no-op.
+    if (!item || !item.menu) return
 
     // Reset before switching items: trayMenuOpener.menu binds to
     // activeTrayItem.menu, so assigning a new item invalidates the old root's
@@ -128,7 +131,7 @@ BarWidget {
     resetTrayMenu()
     activeTrayItem = item
     activeTrayAnchor = anchorItem
-    trayMenuOpen = true
+    trayMenuOpen = TrayModel.menuModelHasChildren(trayMenuOpener.children)
   }
 
   function trayIconSource(icon) {
@@ -516,6 +519,13 @@ BarWidget {
   QsMenuOpener {
     id: trayMenuOpener
     menu: root.activeTrayItem ? root.activeTrayItem.menu : null
+    onChildrenChanged: {
+      var hasChildren = TrayModel.menuModelHasChildren(children)
+      if (root.activeTrayItem && hasChildren && !root.trayMenuOpen)
+        root.trayMenuOpen = true
+      else if (root.trayMenuOpen && !hasChildren)
+        root.close()
+    }
   }
 
   PopupCard {
