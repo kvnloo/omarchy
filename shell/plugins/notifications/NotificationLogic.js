@@ -381,9 +381,26 @@ function parsePopupFiles(raw, normalUrgency) {
   return entries
 }
 
+// Notification protocol timeouts are milliseconds; non-positive values do not
+// request a finite lifetime.
+function requestedDuration(expireTimeout) {
+  var ms = Number(expireTimeout || 0)
+  if (!isFinite(ms) || ms <= 0) return 0
+  return Math.round(ms)
+}
+
+function criticalPopupDuration(expireTimeout, maxDuration) {
+  var requested = requestedDuration(expireTimeout)
+  if (requested <= 0) return 0
+
+  var maximum = Number(maxDuration)
+  if (!isFinite(maximum) || maximum <= 0) return 0
+  return Math.min(maximum, requested)
+}
+
 // A persisted popup whose lifetime already ran out would have expired on
 // screen had the shell kept running, so it is not restored. duration 0 means
-// the popup never expires (critical urgency) and always survives restarts.
+// the popup never expires and therefore survives restarts.
 // A restore-reset deadline outranks the original timestamp: without it, a
 // second restart would judge a re-shown toast by a clock that no longer
 // governs its display and drop it while it is still on screen.
@@ -473,6 +490,8 @@ if (typeof module !== "undefined") {
     persistablePopup: persistablePopup,
     serializePopup: serializePopup,
     parsePopupFiles: parsePopupFiles,
+    requestedDuration: requestedDuration,
+    criticalPopupDuration: criticalPopupDuration,
     popupExpired: popupExpired,
     popupPlacement: popupPlacement
   }

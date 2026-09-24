@@ -101,27 +101,13 @@ Item {
 
   function durationFor(urgency, expireTimeout) {
     switch (urgency) {
-    case NotificationUrgency.Critical: {
-      // FreeDesktop: expireTimeout 0 means never expire. A positive timeout
-      // from the sender must still be honoured for critical urgency — otherwise
-      // battery-low and similar toasts stick forever and resurrect on reboot.
-      var requested = requestedDuration(expireTimeout)
-      if (requested <= 0) return 0
-      return Math.min(maxPopupDuration, requested)
-    }
+    case NotificationUrgency.Critical:
+      return NotificationLogic.criticalPopupDuration(expireTimeout, maxPopupDuration)
     case NotificationUrgency.Low:
-      return Math.min(maxPopupDuration, Math.max(lowPopupDuration, requestedDuration(expireTimeout)))
+      return Math.min(maxPopupDuration, Math.max(lowPopupDuration, NotificationLogic.requestedDuration(expireTimeout)))
     default:
-      return Math.min(maxPopupDuration, Math.max(normalPopupDuration, requestedDuration(expireTimeout)))
+      return Math.min(maxPopupDuration, Math.max(normalPopupDuration, NotificationLogic.requestedDuration(expireTimeout)))
     }
-  }
-
-  function requestedDuration(expireTimeout) {
-    // FreeDesktop notification spec (and Quickshell) report expireTimeout in
-    // milliseconds, so pass it through directly.
-    var ms = Number(expireTimeout || 0)
-    if (!isFinite(ms) || ms <= 0) return 0
-    return Math.round(ms)
   }
 
   // DND bypass: only let through notifications we trust to be intentional
