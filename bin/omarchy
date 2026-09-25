@@ -312,14 +312,154 @@ register_command() {
   IFS="$old_ifs"
 }
 
+# Metadata scan for the whole command tree, in one awk pass instead of one
+# bash read-loop per file. This is the slow-path loader: it runs on typos,
+# aliases, group overrides, and `omarchy commands`, where the direct
+# filename-derived route missed. register_command() stays for the scoped
+# loaders below, which only ever read a handful of files.
+#
+# The awk program mirrors register_command()'s header scan exactly (first 80
+# lines, shebang/blank skipping, `# omarchy:key=value` metadata, first plain
+# `#` comment as fallback summary, stop at the first non-comment line) and
+# computes the same route fields. Records are \034-separated so empty fields
+# survive the bash read; awk is already used across bin/ commands.
 load_commands() {
-  local file=""
+  local metadata_awk
+  metadata_awk=$(cat <<'AWK_EOF'
+function flush(   stem, fallback_group, fallback_name, fallback_route, route, usage) {
+  binary = prev_file
+  sub(/^.*\//, "", binary)
+  stem = binary
+  sub(/^omarchy-/, "", stem)
+  fallback_group = stem
+  fallback_name = ""
+  fallback_route = "omarchy " stem
+  gsub(/-/, " ", fallback_route)
+  if (stem ~ /-/) {
+    fallback_group = stem
+    sub(/-.*$/, "", fallback_group)
+    fallback_name = stem
+    sub(/^[^-]+-/, "", fallback_name)
+    gsub(/-/, " ", fallback_name)
+  }
+  if (group == "") group = fallback_group
+  if (!name_seen) name = fallback_name
+  if (summary == "" && fallback_summary != "") summary = fallback_summary
+  if (summary == "") summary = "Run the " stem_cmd " command"
+  route = "omarchy " group
+  if (name != "") route = route " " name
+  usage = route
+  if (args != "") usage = usage " " args
+  if (requires_sudo != "true") requires_sudo = "false"
+  if (hidden != "true") hidden = "false"
+  print binary "\034" route "\034" fallback_route "\034" group "\034" name "\034" summary \
+    "\034" requires_sudo "\034" hidden "\034" args "\034" examples "\034" aliases \
+    "\034" usage "\034" has_summary "\034" metadata_errors
+}
+FNR == 1 {
+  if (NR > 1) flush()
+  prev_file = FILENAME
+  n = 0; stopped = 0; have_fallback = 0
+  group = ""; name = ""; summary = ""; args = ""; examples = ""; aliases = ""
+  requires_sudo = ""; hidden = ""; fallback_summary = ""
+  has_summary = "false"; metadata_errors = ""; name_seen = 0
+  stem_cmd = prev_file; sub(/^.*\/omarchy-/, "", stem_cmd); gsub(/-/, " ", stem_cmd)
+}
+END { flush() }
+stopped { next }
+{
+  n++
+  if (n > 80) { stopped = 1; next }
+  line = $0
+  sub(/\r$/, "", line)
+  if (FNR == 1 && line ~ /^#!/) next
+  if (line ~ /^[ \t]*$/) next
+  rest = line
+  sub(/^[ \t]*#[ \t]*/, "", rest)
+  if (line ~ /^[ \t]*#[ \t]*omarchy:/ && rest ~ /^omarchy:[A-Za-z0-9_-]+=/ ) {
+    kv = rest; sub(/^omarchy:/, "", kv)
+    eq = index(kv, "=")
+    k = substr(kv, 1, eq - 1); v = substr(kv, eq + 1)
+    gsub(/\t/, " ", v); gsub(/\034/, " ", v)
+    if (k == "group") group = v
+    else if (k == "name") { name = v; name_seen = 1 }
+    else if (k == "summary") { summary = v; if (v != "") has_summary = "true" }
+    else if (k == "args") args = v
+    else if (k == "examples") examples = v
+    else if (k == "alias" || k == "aliases") aliases = v
+    else if (k == "requires-sudo") {
+      requires_sudo = v
+      if (v != "true") {
+        if (metadata_errors != "") metadata_errors = metadata_errors "|"
+        metadata_errors = metadata_errors "requires-sudo must be omitted or true"
+      }
+    }
+    else if (k == "hidden") {
+      hidden = v
+      if (v != "true") {
+        if (metadata_errors != "") metadata_errors = metadata_errors "|"
+        metadata_errors = metadata_errors "hidden must be omitted or true"
+      }
+    }
+    next
+  }
+  if (line ~ /^[ \t]*#/) {
+    if (!have_fallback) {
+      s = rest; gsub(/\t/, " ", s); gsub(/\034/, " ", s)
+      if (s != "" && s !~ /^omarchy:/) { fallback_summary = s; have_fallback = 1 }
+    }
+    next
+  }
+  stopped = 1
+}
+AWK_EOF
+  )
 
+  local files=()
+  local file=""
   for file in "$OMARCHY_BIN_DIR"/omarchy-*; do
     [[ -f $file && -x $file ]] || continue
-    register_command "$file"
+    files+=("$file")
   done
+  (( ${#files[@]} == 0 )) && return 0
 
+  local binary="" route="" fallback_route="" group="" name="" summary=""
+  local requires_sudo="" hidden="" args="" examples="" aliases="" usage=""
+  local has_summary="" metadata_errors=""
+  local old_ifs="" alias_route="" key=""
+
+  while IFS=$'\034' read -r binary route fallback_route group name summary \
+      requires_sudo hidden args examples aliases usage has_summary metadata_errors; do
+    [[ -n $binary ]] || continue
+    key="$binary"
+    COMMAND_KEYS+=("$key")
+    COMMAND_ROUTE["$key"]="$route"
+    COMMAND_FALLBACK_ROUTE["$key"]="$fallback_route"
+    COMMAND_BINARY["$key"]="$binary"
+    COMMAND_GROUP["$key"]="$group"
+    COMMAND_NAME["$key"]="$name"
+    COMMAND_SUMMARY["$key"]="$summary"
+    COMMAND_USAGE["$key"]="$usage"
+    COMMAND_ARGS["$key"]="$args"
+    COMMAND_EXAMPLES["$key"]="$examples"
+    COMMAND_REQUIRES_SUDO["$key"]="$requires_sudo"
+    COMMAND_HIDDEN["$key"]="$hidden"
+    COMMAND_HAS_SUMMARY["$key"]="$has_summary"
+    COMMAND_METADATA_ERRORS["$key"]="$metadata_errors"
+    BINARY_TO_KEY["$binary"]="$key"
+    register_route "$route" "$key"
+    register_route "$fallback_route" "$key"
+    old_ifs="$IFS"
+    IFS='|'
+    for alias_route in $aliases; do
+      alias_route="${alias_route# }"
+      alias_route="${alias_route% }"
+      [[ -z $alias_route || $alias_route == "$route" ]] && continue
+      register_route "$alias_route" "$key" true
+      COMMAND_ALIASES["$key"]=$(append_pipe_value "${COMMAND_ALIASES[$key]}" "$alias_route")
+    done
+    IFS="$old_ifs"
+  done < <(awk -f <(printf '%s' "$metadata_awk") "${files[@]}")
 }
 
 load_command_by_binary() {
