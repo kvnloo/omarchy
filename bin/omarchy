@@ -620,24 +620,28 @@ show_commands() {
 }
 
 markdown_escape() {
-  local value="$1"
-  value="${value//|/\\|}"
-  printf '%s' "$value"
+  # Escapes into the caller's named variable instead of printing: this runs
+  # once per command row, so a $() here would fork once per command.
+  local -n escaped_ref="$2"
+  escaped_ref="${1//|/\\|}"
 }
 
 show_commands_markdown() {
   local include_all="$1"
   local key=""
+  local usage=""
+  local binary=""
+  local summary=""
 
   echo "| Command | Binary | Summary |"
   echo "| --- | --- | --- |"
 
   while IFS= read -r key; do
     [[ -n $key ]] || continue
-    printf '| `%s` | `%s` | %s |\n' \
-      "$(markdown_escape "${COMMAND_USAGE[$key]}")" \
-      "$(markdown_escape "${COMMAND_BINARY[$key]}")" \
-      "$(markdown_escape "${COMMAND_SUMMARY[$key]}")"
+    markdown_escape "${COMMAND_USAGE[$key]}" usage
+    markdown_escape "${COMMAND_BINARY[$key]}" binary
+    markdown_escape "${COMMAND_SUMMARY[$key]}" summary
+    printf '| `%s` | `%s` | %s |\n' "$usage" "$binary" "$summary"
   done < <(sorted_keys "$include_all")
 }
 
