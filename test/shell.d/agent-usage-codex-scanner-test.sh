@@ -603,3 +603,43 @@ result=$(HOME="$INTERRUPTED_HOME" CODEX_HOME="$INTERRUPTED_HOME/.codex" XDG_CACH
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "9" ]] ||
   fail "Codex collector does not reuse a snapshot from an interrupted scan" "$result"
 pass "Codex collector does not cache an interrupted opencode scan"
+
+# Legacy and exec-mode rollouts (e.g. codex v0.114) record only the cumulative
+# total_token_usage with no per-turn last_token_usage. The collector must count
+# the session's final cumulative total exactly once instead of reporting zero.
+LEGACY_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$INTERRUPTED_HOME" "$LEGACY_HOME"' EXIT
+mkdir -p "$LEGACY_HOME/bin" "$LEGACY_HOME/.codex/sessions/$(date +%Y/%m/%d)"
+cp "$TEST_HOME/bin/codex" "$LEGACY_HOME/bin/codex"
+legacy_ts="$(date +%Y-%m-%d)T12:00:00Z"
+cat >"$LEGACY_HOME/.codex/sessions/$(date +%Y/%m/%d)/rollout-exec.jsonl" <<JSON
+{"timestamp":"$legacy_ts","type":"turn_context","payload":{"model":"gpt-exec"}}
+{"timestamp":"$legacy_ts","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":5000,"cached_input_tokens":1000,"output_tokens":1000,"total_tokens":6000}},"rate_limits":null}}
+{"timestamp":"$legacy_ts","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":12065,"cached_input_tokens":2000,"output_tokens":3253,"total_tokens":15318}},"rate_limits":null}}
+JSON
+
+result=$(HOME="$LEGACY_HOME" CODEX_HOME="$LEGACY_HOME/.codex" XDG_CACHE_HOME="$LEGACY_HOME/.cache" XDG_DATA_HOME="$LEGACY_HOME/.local/share" \
+  PATH="$LEGACY_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "15318" ]] ||
+  fail "Codex collector counts a legacy cumulative total once" "$result"
+[[ $(jq -r '.todayPrompts' <<<"$result") == "1" ]] ||
+  fail "Codex collector counts a legacy session as one prompt" "$result"
+[[ $(jq -c '.modelUsage["gpt-exec"]' <<<"$result") == '{"inputTokens":10065,"outputTokens":3253,"cacheReadInputTokens":2000,"cacheCreationInputTokens":0}' ]] ||
+  fail "Codex collector splits a legacy cumulative total like a per-turn one" "$result"
+pass "Codex collector counts a legacy cumulative total once"
+
+# A session mixing modern per-turn events with a legacy cumulative-only event
+# must count the per-turn events and ignore the cumulative snapshot, never both.
+cat >>"$LEGACY_HOME/.codex/sessions/$(date +%Y/%m/%d)/rollout-mixed.jsonl" <<JSON
+{"timestamp":"$legacy_ts","type":"turn_context","payload":{"model":"gpt-mixed"}}
+{"timestamp":"$legacy_ts","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":60,"output_tokens":20,"total_tokens":120},"last_token_usage":{"input_tokens":100,"cached_input_tokens":60,"output_tokens":20,"total_tokens":120}}}}
+{"timestamp":"$legacy_ts","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":99999,"output_tokens":99999,"total_tokens":199998}}}}
+JSON
+
+result=$(HOME="$LEGACY_HOME" CODEX_HOME="$LEGACY_HOME/.codex" XDG_CACHE_HOME="$LEGACY_HOME/.cache" XDG_DATA_HOME="$LEGACY_HOME/.local/share" \
+  PATH="$LEGACY_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --force)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "15438" ]] ||
+  fail "Codex collector never counts a cumulative total alongside per-turn events" "$result"
+pass "Codex collector never counts a cumulative total alongside per-turn events"
