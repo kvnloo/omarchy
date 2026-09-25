@@ -474,18 +474,52 @@ def _cached_local_stats(max_age):
     return stats
 
 
-def rpc_request(proc, request_id, method, params=None, timeout=8):
+class RpcLineReader:
+  """Line reader over a subprocess pipe that never strands buffered input.
+
+  select() only reports unread fd bytes, but a buffered text stream's
+  readline() can pull several lines into Python's buffer at once: a reply
+  arriving in the same chunk as a notification then sits in the buffer while
+  select() keeps timing out. Reading the raw fd and splitting lines in
+  Python keeps every arrived byte visible. One reader per process: a reply
+  can arrive together with an earlier request's notification.
+  """
+
+  def __init__(self, proc):
+    self._fd = proc.stdout.fileno()
+    self._buf = b""
+
+  def readline(self, timeout):
+    """Return the next line as str, or None on EOF or timeout."""
+    deadline = time.time() + timeout
+    while b"\n" not in self._buf:
+      remaining = deadline - time.time()
+      if remaining <= 0:
+        return None
+      ready, _, _ = select.select([self._fd], [], [], remaining)
+      if not ready:
+        return None
+      try:
+        chunk = os.read(self._fd, 65536)
+      except OSError:
+        return None
+      if not chunk:
+        return None
+      self._buf += chunk
+    line, self._buf = self._buf.split(b"\n", 1)
+    return line.decode("utf-8", errors="replace")
+
+
+def rpc_request(proc, reader, request_id, method, params=None, timeout=8):
   payload = {"id": request_id, "method": method, "params": params or {}}
   proc.stdin.write(json.dumps(payload) + "\n")
   proc.stdin.flush()
   deadline = time.time() + timeout
-  while time.time() < deadline:
-    ready, _, _ = select.select([proc.stdout], [], [], 0.25)
-    if not ready:
-      continue
-    line = proc.stdout.readline()
-    if not line:
-      break
+  while True:
+    line = reader.readline(deadline - time.time())
+    if line is None:
+      # EOF or timeout: the reply is not coming.
+      raise TimeoutError(method)
     try:
       message = json.loads(line)
     except Exception:
@@ -540,12 +574,16 @@ def fetch_codex_rpc():
     result["authHelpText"] = str(exc)
     return result
 
+  # One reader for the whole session: a reply can arrive in the same chunk
+  # as an earlier request's notification, and its bytes must stay visible to
+  # every later request.
+  reader = RpcLineReader(proc)
   try:
-    rpc_request(proc, 1, "initialize", {"clientInfo": {"name": "omarchy-agent-usage", "version": "1"}}, timeout=8)
+    rpc_request(proc, reader, 1, "initialize", {"clientInfo": {"name": "omarchy-agent-usage", "version": "1"}}, timeout=8)
     proc.stdin.write(json.dumps({"method": "initialized", "params": {}}) + "\n")
     proc.stdin.flush()
-    account_msg = rpc_request(proc, 2, "account/read", timeout=4)
-    limits_msg = rpc_request(proc, 3, "account/rateLimits/read", timeout=4)
+    account_msg = rpc_request(proc, reader, 2, "account/read", timeout=4)
+    limits_msg = rpc_request(proc, reader, 3, "account/rateLimits/read", timeout=4)
 
     account = (account_msg.get("result") or {}).get("account") or {}
     limits = (limits_msg.get("result") or {}).get("rateLimits") or {}

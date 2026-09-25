@@ -603,3 +603,44 @@ result=$(HOME="$INTERRUPTED_HOME" CODEX_HOME="$INTERRUPTED_HOME/.codex" XDG_CACH
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "9" ]] ||
   fail "Codex collector does not reuse a snapshot from an interrupted scan" "$result"
 pass "Codex collector does not cache an interrupted opencode scan"
+
+# The app-server emits notifications alongside replies (e.g. account/updated
+# right after initialized). A reply that lands in the same chunk as a
+# notification must still be read: select() never fires again for bytes
+# already pulled into the reader's buffer, which used to strand the request
+# until the timeout and report "Codex limits unavailable".
+NOISY_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$CACHE_HOME" "$FRESH_HOME" "$MALFORMED_HOME" "$UNWRITABLE_HOME" "$INTERRUPTED_HOME" "$NOISY_HOME"' EXIT
+mkdir -p "$NOISY_HOME/bin"
+cat >"$NOISY_HOME/bin/codex" <<'EOF'
+#!/bin/bash
+while read -r request; do
+  id=$(jq -r '.id // empty' <<<"$request")
+  method=$(jq -r '.method // empty' <<<"$request")
+  case "$method" in
+    initialize)
+      jq -cn --argjson id "$id" '{id: $id, result: {}}'
+      ;;
+    account/read)
+      # One write: notification and reply in a single chunk, the way the
+      # real app-server emits them after initialized.
+      printf '%s\n%s\n' \
+        '{"jsonrpc":"2.0","method":"account/updated","params":{}}' \
+        "$(jq -cn --argjson id "$id" '{id: $id, result: {account: {planType: "pro"}}}')"
+      ;;
+    account/rateLimits/read)
+      jq -cn --argjson id "$id" '{id: $id, result: {rateLimits: {}}}'
+      ;;
+  esac
+done
+EOF
+chmod +x "$NOISY_HOME/bin/codex"
+
+result=$(HOME="$NOISY_HOME" CODEX_HOME="$NOISY_HOME/.codex" XDG_DATA_HOME="$NOISY_HOME/.local/share" \
+  PATH="$NOISY_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --limits-only)
+
+[[ $(jq -r '.tierLabel' <<<"$result") == "pro" ]] ||
+  fail "Codex collector reads a reply that shares a chunk with a notification" "$result"
+[[ -z $(jq -r '.usageStatusText' <<<"$result") ]] ||
+  fail "Codex collector reports no error when a notification precedes the reply" "$result"
+pass "Codex collector reads replies that share a chunk with notifications"
