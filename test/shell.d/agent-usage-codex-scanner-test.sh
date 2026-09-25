@@ -603,3 +603,50 @@ result=$(HOME="$INTERRUPTED_HOME" CODEX_HOME="$INTERRUPTED_HOME/.codex" XDG_CACH
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "9" ]] ||
   fail "Codex collector does not reuse a snapshot from an interrupted scan" "$result"
 pass "Codex collector does not cache an interrupted opencode scan"
+
+# account/read often hangs on some Codex app-server builds while
+# account/rateLimits/read still answers. Limits must survive that hang
+# (#13266) instead of becoming "Codex limits unavailable".
+HANG_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$CACHE_HOME" "$FRESH_HOME" "$MALFORMED_HOME" "$UNWRITABLE_HOME" "$INTERRUPTED_HOME" "$HANG_HOME"' EXIT
+mkdir -p "$HANG_HOME/bin" "$HANG_HOME/.codex/sessions"
+
+cat >"$HANG_HOME/bin/codex" <<'STUB'
+#!/bin/bash
+
+while read -r request; do
+  id=$(jq -r '.id // empty' <<<"$request")
+  method=$(jq -r '.method // empty' <<<"$request")
+
+  case "$method" in
+    initialize)
+      jq -cn --argjson id "$id" '{id: $id, result: {}}'
+      ;;
+    account/rateLimits/read)
+      jq -cn --argjson id "$id" \
+        '{id: $id, result: {rateLimits: {
+          planType: "plus",
+          primary: {usedPercent: 42, windowDurationMins: 10080, resetsAt: 1893456000},
+          secondary: {usedPercent: 10, windowDurationMins: 300, resetsAt: 1893456000}
+        }}}'
+      ;;
+    account/read)
+      # Never answer — simulate the app-server hang from #13266.
+      ;;
+  esac
+done
+STUB
+chmod +x "$HANG_HOME/bin/codex"
+
+result=$(HOME="$HANG_HOME" CODEX_HOME="$HANG_HOME/.codex" XDG_DATA_HOME="$HANG_HOME/.local/share" \
+  PATH="$HANG_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --limits-only)
+
+[[ $(jq -r '.usageStatusText' <<<"$result") != "Codex limits unavailable" ]] ||
+  fail "Codex collector must not mark limits unavailable when only account/read hangs" "$result"
+[[ $(jq -r '.limits | length' <<<"$result") -ge 1 ]] ||
+  fail "Codex collector keeps rate limits when account/read never answers" "$result"
+[[ $(jq -r '.tierLabel' <<<"$result") == "plus" ]] ||
+  fail "Codex collector uses planType from rateLimits without account/read" "$result"
+[[ $(jq -r '.limits[0].label' <<<"$result") == "Weekly (7-day)" ]] ||
+  fail "Codex collector maps primary window from rateLimits alone" "$result"
+pass "Codex collector keeps rate limits when account/read never answers"

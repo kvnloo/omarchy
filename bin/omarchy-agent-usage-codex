@@ -544,11 +544,25 @@ def fetch_codex_rpc():
     rpc_request(proc, 1, "initialize", {"clientInfo": {"name": "omarchy-agent-usage", "version": "1"}}, timeout=8)
     proc.stdin.write(json.dumps({"method": "initialized", "params": {}}) + "\n")
     proc.stdin.flush()
-    account_msg = rpc_request(proc, 2, "account/read", timeout=4)
-    limits_msg = rpc_request(proc, 3, "account/rateLimits/read", timeout=4)
 
-    account = (account_msg.get("result") or {}).get("account") or {}
-    limits = (limits_msg.get("result") or {}).get("rateLimits") or {}
+    # Rate limits are what the panel needs. Fetch them first so a hung
+    # account/read cannot abort before we have them (#13266).
+    try:
+      limits_msg = rpc_request(proc, 2, "account/rateLimits/read", timeout=4)
+      limits = (limits_msg.get("result") or {}).get("rateLimits") or {}
+    except Exception as exc:
+      result["usageStatusText"] = "Codex limits unavailable"
+      result["authHelpText"] = str(exc)
+      return result
+
+    account = {}
+    try:
+      account_msg = rpc_request(proc, 3, "account/read", timeout=4)
+      account = (account_msg.get("result") or {}).get("account") or {}
+    except Exception:
+      # Optional fallback for plan labeling only; keep rateLimits we already have.
+      pass
+
     plan = limits.get("planType") or account.get("planType") or account.get("type") or ""
     result["tierLabel"] = str(plan) if plan else ""
 
