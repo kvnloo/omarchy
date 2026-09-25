@@ -4,6 +4,8 @@ source "$(dirname "$0")/base-test.sh"
 
 require_command jq
 require_command python3
+require_command git
+require_command rg
 
 TEST_HOME=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME"' EXIT
@@ -90,6 +92,27 @@ result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" XDG_DATA_HOME="$PI_HOME/.l
 [[ $(jq -c '.modelUsage' <<<"$result") == '{"gpt-pi":{"inputTokens":10,"outputTokens":4,"cacheReadInputTokens":3,"cacheCreationInputTokens":2},"gpt-omp":{"inputTokens":20,"outputTokens":5,"cacheReadInputTokens":4,"cacheCreationInputTokens":1}}' ]] ||
   fail "Codex collector filters pi and omp sessions to Codex providers" "$result"
 pass "Codex collector counts pi and omp subscription usage"
+
+# A $HOME that is itself a git checkout (a common dotfiles setup with a
+# whitelist .gitignore) must not hide the session files from the scan:
+# ripgrep applies the parent repo's ignore rules to searched directories,
+# which would otherwise make the scan silently count zero usage.
+GIT_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$GIT_HOME"' EXIT
+mkdir -p "$GIT_HOME/bin" "$GIT_HOME/.pi/agent/sessions/project"
+cp "$TEST_HOME/bin/codex" "$GIT_HOME/bin/codex"
+cat >"$GIT_HOME/.pi/agent/sessions/project/pi.jsonl" <<EOF
+{"type":"message","id":"git-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","model":"gpt-git","usage":{"input":6,"output":2}}}
+EOF
+git -C "$GIT_HOME" init -q
+printf '*\n' >"$GIT_HOME/.gitignore"
+
+result=$(HOME="$GIT_HOME" CODEX_HOME="$GIT_HOME/.codex" XDG_DATA_HOME="$GIT_HOME/.local/share" \
+  PATH="$GIT_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "8" ]] ||
+  fail "Codex collector counts pi sessions when HOME is a git checkout" "$result"
+pass "Codex collector counts pi sessions when HOME is a git checkout"
 
 # A subscription burned entirely through opencode has no native session files;
 # usage must come from opencode's message database, filtered to OpenAI.
