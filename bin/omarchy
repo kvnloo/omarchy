@@ -826,6 +826,19 @@ show_prefix_help() {
   local prefix_with_space="$prefix "
   local key=""
   local rows=""
+  local found=0
+
+  # Miss fast path: this runs only after routing failed, so a pure typo
+  # (nothing matches) is the common case. The sorted-keys pipeline below
+  # costs ~100ms (bash loop + sort + cut forks) even on a miss; an unsorted
+  # in-bash scan detects the miss in ~15ms and skips the pipeline entirely.
+  for key in "${COMMAND_KEYS[@]}"; do
+    if [[ ${COMMAND_HIDDEN[$key]} != "true" && ${COMMAND_USAGE[$key]} == $prefix_with_space* ]]; then
+      found=1
+      break
+    fi
+  done
+  (( found )) || return 1
 
   while IFS= read -r key; do
     [[ -n $key ]] || continue
@@ -833,8 +846,6 @@ show_prefix_help() {
       rows+="${COMMAND_USAGE[$key]}"$'\t'$'\t'"${COMMAND_SUMMARY[$key]}"$'\n'
     fi
   done < <(sorted_keys false)
-
-  [[ -n $rows ]] || return 1
 
   echo "${prefix#omarchy } commands:"
   print_command_table "$rows"
