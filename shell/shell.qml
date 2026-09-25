@@ -1709,6 +1709,14 @@ ShellRoot {
       shell.hide(id)
     }
 
+    // Dismiss the open bar KeyboardPanel (clock calendar, battery, …) so a
+    // screensaver launch can take focus and go fullscreen. Best-effort: "none"
+    // when the bar has no popout, "no-bar" when the bar host is missing.
+    function closeActivePopout(): string {
+      if (!shell.bar || typeof shell.bar.closeActivePopout !== "function") return "no-bar"
+      return shell.bar.closeActivePopout() ? "ok" : "none"
+    }
+
     function toggle(id: string, payloadJson: string): void {
       shell.toggle(id, payloadJson)
     }

@@ -552,6 +552,21 @@ Item {
     if (activePopout === owner) activePopout = null
   }
 
+  // Close whatever KeyboardPanel / PopupCard currently owns the bar's
+  // single-popout slot. Screensaver launch needs this: an open panel holds
+  // layer-shell keyboard focus, so the new toplevel never becomes
+  // activewindow and Hyprland's fullscreen windowrule for
+  // org.omarchy.screensaver fails to apply.
+  function closeActivePopout() {
+    if (!activePopout) return false
+    var owner = activePopout
+    if ("close" in owner) owner.close()
+    else if ("closeForPopoutSwitch" in owner) owner.closeForPopoutSwitch()
+    else return false
+    if (activePopout === owner) activePopout = null
+    return true
+  }
+
   readonly property bool vertical: position === "left" || position === "right"
   readonly property int barSize: vertical ? Style.bar.sizeVertical : Style.bar.sizeHorizontal
 

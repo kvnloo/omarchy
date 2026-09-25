@@ -10,6 +10,12 @@ if omarchy-toggle-enabled screensaver-off && [[ $1 != "force" ]]; then
   exit 1
 fi
 
+# An open KeyboardPanel (clock calendar, battery, …) holds layer-shell focus.
+# With one up, the screensaver never becomes activewindow, Hyprland skips the
+# fullscreen windowrule, and omarchy-screensaver treats the missing focus as a
+# dismissal ~1s later — canceling the idle lock cycle. Drop the panel first.
+omarchy-shell -q shell closeActivePopout || true
+
 focused=$(omarchy-hyprland-monitor-focused)
 terminal=$(xdg-terminal-exec --print-id)
 
