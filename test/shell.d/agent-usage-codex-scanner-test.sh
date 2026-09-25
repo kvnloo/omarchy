@@ -603,3 +603,29 @@ result=$(HOME="$INTERRUPTED_HOME" CODEX_HOME="$INTERRUPTED_HOME/.codex" XDG_CACH
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "9" ]] ||
   fail "Codex collector does not reuse a snapshot from an interrupted scan" "$result"
 pass "Codex collector does not cache an interrupted opencode scan"
+
+# A forked Pi session copies inherited messages verbatim (same ids) into a
+# new file; the inherited usage must count once, not once per fork. Only
+# messages the fork actually generated add new usage.
+FORK_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$CACHE_HOME" "$FRESH_HOME" "$MALFORMED_HOME" "$UNWRITABLE_HOME" "$INTERRUPTED_HOME" "$FORK_HOME"' EXIT
+mkdir -p "$FORK_HOME/bin" "$FORK_HOME/.pi/agent/sessions/project"
+cp "$TEST_HOME/bin/codex" "$FORK_HOME/bin/codex"
+cat >"$FORK_HOME/.pi/agent/sessions/project/parent.jsonl" <<EOF
+{"type":"message","id":"fork-parent-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","api":"openai-codex-responses","model":"gpt-pi","usage":{"input":10,"output":4,"cacheRead":1,"cacheWrite":1,"totalTokens":16}}}
+{"type":"message","id":"fork-parent-2","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","api":"openai-codex-responses","model":"gpt-pi","usage":{"input":20,"output":8,"cacheRead":2,"cacheWrite":2,"totalTokens":32}}}
+EOF
+cat >"$FORK_HOME/.pi/agent/sessions/project/fork.jsonl" <<EOF
+{"type":"message","id":"fork-parent-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","api":"openai-codex-responses","model":"gpt-pi","usage":{"input":10,"output":4,"cacheRead":1,"cacheWrite":1,"totalTokens":16}}}
+{"type":"message","id":"fork-parent-2","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","api":"openai-codex-responses","model":"gpt-pi","usage":{"input":20,"output":8,"cacheRead":2,"cacheWrite":2,"totalTokens":32}}}
+{"type":"message","id":"fork-new-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","api":"openai-codex-responses","model":"gpt-pi","usage":{"input":30,"output":12,"cacheRead":3,"cacheWrite":3,"totalTokens":48}}}
+EOF
+
+result=$(HOME="$FORK_HOME" CODEX_HOME="$FORK_HOME/.codex" XDG_DATA_HOME="$FORK_HOME/.local/share" \
+  PATH="$FORK_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(jq -r '.totalPrompts' <<<"$result") == "3" ]] ||
+  fail "Codex collector counts inherited fork messages once" "$result"
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "96" ]] ||
+  fail "Codex collector does not double-count forked session tokens" "$result"
+pass "Codex collector counts forked Pi session messages once"

@@ -170,7 +170,12 @@ def scan_pi_sessions():
 
       if entry.get("type") != "message":
         continue
-      message_key = path + ":" + str(entry.get("id") or "")
+      message_id = str(entry.get("id") or "")
+      # Forked/cloned sessions copy inherited messages verbatim (same ids)
+      # into a new file; keying on the path too would count every inherited
+      # message once per fork. Id-less entries still key on the path so they
+      # stay distinct per file.
+      message_key = message_id if message_id else path + ":"
       if message_key in seen_pi_messages:
         continue
       seen_pi_messages.add(message_key)
