@@ -424,34 +424,42 @@ sorted_keys() {
 }
 
 fallback_group_for_key() {
+  # Writes into the caller's named variable instead of printing: this runs
+  # once per command row inside sorted_group_keys, so a $() here would fork
+  # once per command.
   local key="$1"
+  local -n fallback_ref="$2"
   local fallback="${COMMAND_FALLBACK_ROUTE[$key]#omarchy }"
 
-  printf '%s' "${fallback%% *}"
+  fallback_ref="${fallback%% *}"
 }
 
 command_route_for_group() {
   local key="$1"
   local group="$2"
+  local -n route_ref="$3"
+  local fallback_group=""
 
-  if [[ $(fallback_group_for_key "$key") == "$group" && ${COMMAND_GROUP[$key]} != "$group" ]]; then
-    printf '%s' "${COMMAND_FALLBACK_ROUTE[$key]}"
+  fallback_group_for_key "$key" fallback_group
+  if [[ $fallback_group == "$group" && ${COMMAND_GROUP[$key]} != "$group" ]]; then
+    route_ref="${COMMAND_FALLBACK_ROUTE[$key]}"
   else
-    printf '%s' "${COMMAND_ROUTE[$key]}"
+    route_ref="${COMMAND_ROUTE[$key]}"
   fi
 }
 
 command_usage_for_group() {
   local key="$1"
   local group="$2"
+  local -n usage_ref="$3"
   local route=""
 
-  route=$(command_route_for_group "$key" "$group")
+  command_route_for_group "$key" "$group" route
   if [[ -n ${COMMAND_ARGS[$key]} ]]; then
     route+=" ${COMMAND_ARGS[$key]}"
   fi
 
-  printf '%s' "$route"
+  usage_ref="$route"
 }
 
 sorted_group_keys() {
@@ -466,12 +474,12 @@ sorted_group_keys() {
       continue
     fi
 
-    fallback_group=$(fallback_group_for_key "$key")
+    fallback_group_for_key "$key" fallback_group
     if [[ ${COMMAND_GROUP[$key]} != "$group" && $fallback_group != "$group" ]]; then
       continue
     fi
 
-    route=$(command_route_for_group "$key" "$group")
+    command_route_for_group "$key" "$group" route
     printf '%s\t%s\n' "$route" "$key"
   done | sort -u | cut -f2-
 }
@@ -801,6 +809,7 @@ show_group_help() {
   local include_all="${2:-false}"
   local key=""
   local rows=""
+  local usage=""
   local title="${GROUP_DESCRIPTIONS[$group]}"
 
   if [[ -n $title ]]; then
@@ -811,7 +820,8 @@ show_group_help() {
 
   while IFS= read -r key; do
     [[ -n $key ]] || continue
-    rows+="$(command_usage_for_group "$key" "$group")"$'\t'$'\t'"${COMMAND_SUMMARY[$key]}"$'\n'
+    command_usage_for_group "$key" "$group" usage
+    rows+="$usage"$'\t'$'\t'"${COMMAND_SUMMARY[$key]}"$'\n'
   done < <(sorted_group_keys "$group" "$include_all")
 
   if [[ -n $rows ]]; then
@@ -845,12 +855,14 @@ show_related_commands() {
   local group="${COMMAND_GROUP[$key]}"
   local child_key=""
   local rows=""
+  local usage=""
 
   [[ -z ${COMMAND_NAME[$key]} ]] || return
 
   while IFS= read -r child_key; do
     [[ -n $child_key && $child_key != "$key" ]] || continue
-    rows+="$(command_usage_for_group "$child_key" "$group")"$'\t'$'\t'"${COMMAND_SUMMARY[$child_key]}"$'\n'
+    command_usage_for_group "$child_key" "$group" usage
+    rows+="$usage"$'\t'$'\t'"${COMMAND_SUMMARY[$child_key]}"$'\n'
   done < <(sorted_group_keys "$group" false)
 
   if [[ -n $rows ]]; then
