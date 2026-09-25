@@ -50,7 +50,35 @@ Panel {
     return Model.hasHumanName(device)
   }
 
-  readonly property var deviceGroups: Model.deviceLists(devices)
+  // Model.js is imported as a JS resource, so property reads inside
+  // deviceLists() do not register QML binding dependencies. Touch every
+  // field the lists care about here so BlueZ Name/Alias updates (e.g. a
+  // MAC-like placeholder becoming a real device name) re-run grouping
+  // without restarting the shell.
+  readonly property string deviceListFingerprint: {
+    var list = devices
+    var parts = []
+    for (var i = 0; i < list.length; i++) {
+      var d = list[i]
+      if (!d) {
+        parts.push("")
+        continue
+      }
+      parts.push([
+        d.address || "",
+        d.deviceName || "",
+        d.name || "",
+        d.connected ? "c" : "",
+        (d.paired || d.bonded || d.trusted) ? "k" : ""
+      ].join("\t"))
+    }
+    return parts.join("\n")
+  }
+
+  readonly property var deviceGroups: {
+    var _fingerprint = deviceListFingerprint
+    return Model.deviceLists(devices)
+  }
   readonly property var connectedDevices: deviceGroups.connected || []
   readonly property var knownDevices: deviceGroups.known || []
   readonly property var discoveredDevices: deviceGroups.discovered || []

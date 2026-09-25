@@ -99,6 +99,13 @@ function deviceRow(d) {
   }
 }
 
+// Connected devices always belong in the panel, even while BlueZ still
+// exposes a MAC-like Name/Alias placeholder. Known/discovered stay gated on
+// a human label so unnamed BLE noise does not flood Available.
+function isListedDevice(device) {
+  return !!device && (device.connected || hasHumanName(device))
+}
+
 function deviceLists(devices) {
   var values = toArray(devices)
   var connected = []
@@ -107,7 +114,7 @@ function deviceLists(devices) {
 
   for (var i = 0; i < values.length; i++) {
     var d = values[i]
-    if (!d || !hasHumanName(d)) continue
+    if (!isListedDevice(d)) continue
     if (d.connected) connected.push(d)
     else if (d.paired || d.bonded || d.trusted) known.push(d)
     else discovered.push(d)
@@ -162,6 +169,7 @@ if (typeof module !== "undefined") {
     isAddressLike: isAddressLike,
     normalizedAddress: normalizedAddress,
     hasHumanName: hasHumanName,
+    isListedDevice: isListedDevice,
     nodeProps: nodeProps,
     nodeText: nodeText,
     bluetoothSinkMatchesDevice: bluetoothSinkMatchesDevice,
