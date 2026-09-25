@@ -178,3 +178,29 @@ PY
 [[ $(jq -r '.mode' <<<"$race_output") == "0o644" ]] ||
   fail "Claude collector keeps cache files readable" "$race_output"
 pass "Claude collector survives concurrent writes to one cache file"
+
+# A forked Pi session copies inherited messages verbatim (same ids) into a
+# new file; the Claude collector's pi scan must count the inherited usage
+# once, not once per fork — the same bug class as the codex collector's
+# #8564 fix, in the parallel scan_pi_usage code path.
+FORK_PI_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$HISTORY_HOME" "$OPENCODE_HOME" "$PI_HOME" "$FORK_PI_HOME"' EXIT
+mkdir -p "$FORK_PI_HOME/.pi/agent/sessions/project"
+cat >"$FORK_PI_HOME/.pi/agent/sessions/project/parent.jsonl" <<EOF2
+{"type":"message","id":"fork-c-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"anthropic","model":"claude-pi","usage":{"input":10,"output":4,"cacheRead":3,"cacheWrite":2,"totalTokens":19}}}
+{"type":"message","id":"fork-c-2","timestamp":"$timestamp","message":{"role":"assistant","provider":"anthropic","model":"claude-pi","usage":{"input":20,"output":8,"cacheRead":2,"cacheWrite":2,"totalTokens":32}}}
+EOF2
+cat >"$FORK_PI_HOME/.pi/agent/sessions/project/fork.jsonl" <<EOF2
+{"type":"message","id":"fork-c-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"anthropic","model":"claude-pi","usage":{"input":10,"output":4,"cacheRead":3,"cacheWrite":2,"totalTokens":19}}}
+{"type":"message","id":"fork-c-2","timestamp":"$timestamp","message":{"role":"assistant","provider":"anthropic","model":"claude-pi","usage":{"input":20,"output":8,"cacheRead":2,"cacheWrite":2,"totalTokens":32}}}
+{"type":"message","id":"fork-c-3","timestamp":"$timestamp","message":{"role":"assistant","provider":"anthropic","model":"claude-pi","usage":{"input":30,"output":12,"cacheRead":3,"cacheWrite":3,"totalTokens":48}}}
+EOF2
+
+result=$(HOME="$FORK_PI_HOME" XDG_CACHE_HOME="$FORK_PI_HOME/.cache" XDG_DATA_HOME="$FORK_PI_HOME/.local/share" \
+  "$ROOT/bin/omarchy-agent-usage-claude" --force)
+
+[[ $(jq -r '.totalPrompts' <<<"$result") == "3" ]] ||
+  fail "Claude collector counts inherited fork messages once" "$result"
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "99" ]] ||
+  fail "Claude collector does not double-count forked pi session tokens" "$result"
+pass "Claude collector counts forked Pi session messages once"

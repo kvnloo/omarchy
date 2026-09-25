@@ -376,7 +376,12 @@ def scan_pi_usage(max_age_seconds: float) -> dict[str, Any] | None:
               provider = str(message.get("provider") or "")
               if provider != "anthropic":
                 continue
-              unique_key = f"{path}:{entry.get('id') or line_number}"
+              message_id = str(entry.get("id") or "")
+              # Forked/cloned sessions copy inherited messages verbatim (same
+              # ids) into a new file; keying on the path too would count every
+              # inherited message once per fork. Id-less entries still key on
+              # the path so they stay distinct per file.
+              unique_key = message_id if message_id else f"{path}:{line_number}"
               if unique_key in seen:
                 continue
               seen.add(unique_key)
