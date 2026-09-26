@@ -90,7 +90,7 @@ pass "resume subscription exists before the sleep inhibitor is released"
 
 # Unit-mode edges remain independently testable.
 : >"$layout_log"
-printf '   boolean true\n' |   OMARCHY_PATH="$mock_omarchy" LAYOUT_LOG="$layout_log" LOCK_LOG="$lock_log"   "$sleep_monitor" --consume-prepare
+printf '   boolean true\n' |   OMARCHY_PATH="$mock_omarchy" LAYOUT_LOG="$layout_log" LOCK_LOG="$lock_log" PREPARE_SEEN="$prepare_seen"   "$sleep_monitor" --consume-prepare
 [[ $(<"$layout_log") == save ]] || fail "prepare consumer saves layout"
 
 : >"$layout_log"

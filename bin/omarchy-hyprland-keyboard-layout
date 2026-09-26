@@ -38,15 +38,7 @@ case $action in
     ;;
   restore)
     [[ -f $state_file ]] || exit 0
-    IFS=      hyprctl switchxkblayout all "$index" >/dev/null 2>&1 || true
-    fi
-    ;;
-  *)
-    echo "Usage: omarchy-hyprland-keyboard-layout <save|restore>" >&2
-    exit 1
-    ;;
-esac
-\t' read -r name index <"$state_file" || exit 0
+    IFS=$'\t' read -r name index <"$state_file" || exit 0
     rm -f "$state_file"
     [[ -n $name && $index =~ ^[0-9]+$ ]] || exit 0
 
