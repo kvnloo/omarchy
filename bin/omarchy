@@ -521,7 +521,7 @@ Omarchy command center
 
 Usage:
   omarchy <command> [args...]
-  omarchy commands [--all] [--json] [--check]
+  omarchy commands [--all] [--json] [--markdown] [--check]
   omarchy <group> --help
   omarchy <group> <command> --help
 
@@ -542,6 +542,7 @@ Discovery:
   omarchy commands            List all commands
   omarchy commands --all      Include commands explicitly marked hidden
   omarchy commands --json     Machine-readable command list
+  omarchy commands --markdown Emit a Markdown command table
   omarchy commands --check    Validate command metadata and routes
 EOF
 }
