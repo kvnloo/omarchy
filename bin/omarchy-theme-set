@@ -218,6 +218,15 @@ is_denied_installed_file() {
   return 1
 }
 
+# A stranger's documentation rides along; anything else it may not ship is
+# named so the user knows what was dropped.
+note_ignored_theme_file() {
+  case "${1,,}" in
+    readme* | license* | changelog* | *.md | *.txt) ;;
+    *) IGNORED_THEME_FILES+=("$1") ;;
+  esac
+}
+
 # Themes older than colors.toml still get their palette, but their
 # alacritty.toml never reaches the staged theme: an Alacritty config names the
 # program the terminal launches.
@@ -247,6 +256,11 @@ stage_installed_colors_from_alacritty() {
 # Copies a directory without ever following a symlink: in an installed theme one
 # points wherever the theme author chose, which is how an unlock.png becomes a
 # copy of any file the session can read.
+#
+# The stranger's denied list holds at every depth, not just the top level that
+# stage_installed_theme screens: without this, hyprland/init.lua stages verbatim
+# and Lua's ?/init.lua fallback loads it at login whenever no hyprland.lua was
+# generated (a theme without colors.toml gets no templates).
 stage_installed_dir() {
   local source="$1"
   local dest="$2"
@@ -257,6 +271,11 @@ stage_installed_dir() {
   for entry in "$source"/*; do
     [[ -e $entry && ! -L $entry ]] || continue
     name=${entry##*/}
+
+    if is_denied_installed_file "$name"; then
+      note_ignored_theme_file "$name"
+      continue
+    fi
 
     if [[ -d $entry ]]; then
       stage_installed_dir "$entry" "$dest/$name"
@@ -288,10 +307,7 @@ stage_installed_theme() {
     name=${entry##*/}
 
     if [[ -L $entry ]] || is_denied_installed_file "$name"; then
-      case "${name,,}" in
-        readme* | license* | changelog* | *.md | *.txt) ;;
-        *) IGNORED_THEME_FILES+=("$name") ;;
-      esac
+      note_ignored_theme_file "$name"
     elif [[ -d $entry ]]; then
       stage_installed_dir "$entry" "$NEXT_THEME_PATH/$name"
     else
