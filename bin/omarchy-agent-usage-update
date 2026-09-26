@@ -52,16 +52,41 @@ collect() {
 }
 
 pids=()
+collectors=()
 for collector in "$OMARCHY_PATH"/bin/omarchy-agent-usage-*; do
   [[ -x $collector ]] || continue
   agent="${collector##*/omarchy-agent-usage-}"
   [[ $agent == "update" ]] && continue
+  collectors+=("$agent:$collector")
+done
+
+if (( ${#collectors[@]} == 0 )); then
+  echo "omarchy-agent-usage-update: no collectors found in $OMARCHY_PATH/bin" >&2
+  exit 1
+fi
+
+if (( ${#only[@]} > 0 )); then
+  for candidate in "${only[@]}"; do
+    known="false"
+    for entry in "${collectors[@]}"; do
+      [[ ${entry%%:*} == "$candidate" ]] && known="true"
+    done
+    if [[ $known == "false" ]]; then
+      echo "omarchy-agent-usage-update: unknown agent: $candidate" >&2
+      exit 1
+    fi
+  done
+fi
+
+status=0
+for entry in "${collectors[@]}"; do
+  agent="${entry%%:*}"
+  collector="${entry#*:}"
   wanted "$agent" || continue
   collect "$collector" "$agent" &
   pids+=($!)
 done
 
-status=0
 for pid in "${pids[@]}"; do
   wait "$pid" || status=1
 done

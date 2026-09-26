@@ -63,3 +63,25 @@ pass "update succeeds when the requested collectors all pass"
 [[ -e $usage_dir/skipped.json && ! -e $usage_dir/noisy.json ]] ||
   fail "update with agent arguments only runs the named collectors"
 pass "update with agent arguments only runs the named collectors"
+
+HOME="$TEST_HOME" OMARCHY_PATH="$FAKE_OMARCHY" XDG_STATE_HOME="" \
+  "$ROOT/bin/omarchy-agent-usage-update" claud 2>/dev/null &&
+  fail "update rejects an unknown agent name"
+pass "update rejects an unknown agent name"
+
+HOME="$TEST_HOME" OMARCHY_PATH="$FAKE_OMARCHY" XDG_STATE_HOME="" \
+  "$ROOT/bin/omarchy-agent-usage-update" good nosuch 2>/dev/null &&
+  fail "update rejects a run mixing known and unknown agent names"
+pass "update rejects a run mixing known and unknown agent names"
+
+EMPTY_OMARCHY=$(mktemp -d)
+HOME="$TEST_HOME" OMARCHY_PATH="$EMPTY_OMARCHY" XDG_STATE_HOME="" \
+  "$ROOT/bin/omarchy-agent-usage-update" 2>/dev/null &&
+  fail "update fails when no collectors are discovered"
+pass "update fails when no collectors are discovered"
+rmdir "$EMPTY_OMARCHY"
+
+HOME="$TEST_HOME" OMARCHY_PATH="$FAKE_OMARCHY" XDG_STATE_HOME="" \
+  "$ROOT/bin/omarchy-agent-usage-update" --except skipped --except noisy --except nosuchagent 2>/dev/null ||
+  fail "update still tolerates --except for names without collectors"
+pass "update still tolerates --except for names without collectors"
