@@ -590,11 +590,16 @@ def record_source(font_path, codepoint, label, location):
     if not os.path.exists(readme):
         return None
     lines = open(readme, encoding='utf-8').read().split('\n')
-    last = max(i for i, l in enumerate(lines) if l.startswith('- `U+'))
+    # A README that predates the mark list (or never had one) is not an
+    # error: the new mark starts the list at the end of the file.
+    marks = [i for i, l in enumerate(lines) if l.startswith('- `U+')]
     entry = '- `U+%04X` — %s' % (codepoint, label)
     if location.startswith(('http://', 'https://')):
         entry += ', from <%s>' % location
-    lines.insert(last + 1, entry)
+    if marks:
+        lines.insert(max(marks) + 1, entry)
+    else:
+        lines.append(entry)
     open(readme, 'w', encoding='utf-8').write('\n'.join(lines))
     return readme
 
