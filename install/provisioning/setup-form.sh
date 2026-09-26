@@ -107,7 +107,12 @@ omarchy_prompt_username() {
     username=$(gum input --placeholder "Alphanumeric without spaces (like dhh)" --prompt.foreground="#845DF9" --prompt "Username> ") && status=0 || status=$?
     ((status == 0)) || return $status
 
-    if [[ "$username" =~ $OMARCHY_USERNAME_PATTERN ]]; then
+    # useradd rejects names longer than 32 characters, so the form has to as
+    # well: in first-boot setup the username is pinned before useradd runs, and
+    # a retry replays the same name into the same failure with no way out.
+    if ((${#username} > 32)); then
+      notice "Username must be 32 characters or fewer" 1
+    elif [[ "$username" =~ $OMARCHY_USERNAME_PATTERN ]]; then
       if [[ "$username" =~ $OMARCHY_RESERVED_USERNAMES ]]; then
         notice "Username is reserved for system" 1
       elif omarchy_username_taken "$username"; then
