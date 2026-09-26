@@ -95,3 +95,41 @@ fi
   fail "an escaping command name removes nothing outside ~/.local/bin"
 
 pass "an escaping command name removes nothing outside ~/.local/bin"
+
+# A user's own wrapper at ~/.local/bin/<command> must survive reinstall. The
+# installer used to rm -f unconditionally, then cat through any leftover
+# symlink (#6618). Refuse anything that is not a known mise shim template.
+mkdir -p "$home/.local/bin"
+printf '#!/bin/bash\nexec my-pinned-tool "$@"\n' >"$home/.local/bin/customtool"
+chmod +x "$home/.local/bin/customtool"
+if install_wrapper somepkg customtool >/dev/null 2>"$tmpdir/err"; then
+  fail "a user wrapper is not overwritten"
+fi
+grep -Fq 'not overwriting' "$tmpdir/err" ||
+  fail "refusal names the non-wrapper path" "$(cat "$tmpdir/err")"
+grep -Fq 'exec my-pinned-tool' "$home/.local/bin/customtool" ||
+  fail "user wrapper contents are preserved" "$(cat "$home/.local/bin/customtool")"
+pass "a user wrapper is left alone"
+
+# A prior omarchy-mise-install shim (current template) is still replaceable.
+install_wrapper npm:playwright playwright >/dev/null
+install_wrapper npm:playwright playwright >/dev/null ||
+  fail "a current mise shim can be refreshed"
+grep -Fq 'export MISE_MINIMUM_RELEASE_AGE=0' "$home/.local/bin/playwright" ||
+  fail "refreshed shim keeps the current template"
+pass "a current mise shim can be overwritten"
+
+# Symlinks are always dropped (never written through into the target binary).
+real="$tmpdir/real-binary"
+printf '#!/bin/bash\necho real\n' >"$real"
+chmod +x "$real"
+ln -s "$real" "$home/.local/bin/linktool"
+install_wrapper somepkg linktool >/dev/null ||
+  fail "a symlink target path is replaced with a mise shim"
+[[ -L $home/.local/bin/linktool ]] &&
+  fail "symlink is replaced, not followed"
+grep -Fq 'echo real' "$real" ||
+  fail "real binary behind a symlink is not clobbered" "$(cat "$real")"
+[[ -x $home/.local/bin/linktool ]] ||
+  fail "symlink path becomes an executable mise shim"
+pass "a symlink is dropped without writing through"
