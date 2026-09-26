@@ -23,6 +23,9 @@ cat >"$mock_bin/xdg-settings" <<'SH'
 SH
 cat >"$mock_bin/xdg-mime" <<'SH'
 #!/bin/bash
+if [[ ${OMARCHY_TEST_XDG_MIME_EMPTY:-0} == "1" ]]; then
+  exit 0
+fi
 if [[ $* == "query default x-scheme-handler/https" ]]; then
   echo chromium.desktop
 fi
@@ -77,5 +80,21 @@ grep -F 'https://example.test/fallback' "$launch_log" >/dev/null ||
   fail "browser launcher unsets BROWSER before reading xdg-settings"
 grep -Fx '^chromium.*$' "$focus_log" >/dev/null ||
   fail "browser launcher focuses the browser resolved from the HTTPS handler"
+
+rm -f "$launch_log" "$focus_log"
+
+# With no default browser at all (xdg-settings and the HTTPS handler both
+# empty), the launcher used to spawn uwsm-app with an empty argv and then
+# focus the first window matching "^.*$" — a failed launch that also stole
+# focus to an arbitrary window.
+if HOME="$test_home" PATH="$mock_bin:$PATH" HYPRLAND_INSTANCE_SIGNATURE=test \
+  OMARCHY_TEST_XDG_SETTINGS_EMPTY=1 OMARCHY_TEST_XDG_MIME_EMPTY=1 \
+  OMARCHY_TEST_BROWSER_LAUNCH="$launch_log" OMARCHY_TEST_BROWSER_FOCUS="$focus_log" \
+  bash "$ROOT/bin/omarchy-launch-browser" "https://example.test/none" 2>/dev/null; then
+  fail "browser launcher refuses to launch with no default browser configured"
+fi
+[[ ! -e $launch_log ]] || fail "browser launcher spawns nothing with no default browser configured"
+[[ ! -e $focus_log ]] || fail "browser launcher steals no focus with no default browser configured"
+pass "browser launcher refuses to launch with no default browser configured"
 
 pass "browser launcher follows opened links to the browser workspace"
