@@ -31,7 +31,17 @@ done
 
 cd "${OMARCHY_PATH:-$(pwd)}"
 mkdir -p migrations
-migration_file="migrations/$(git log -1 --format=%cd --date=unix).sh"
+
+timestamp=$(git log -1 --format=%cd --date=unix)
+migration_file="migrations/$timestamp.sh"
+
+# The name is the last commit's date, so two migrations created before the
+# next commit share it: the second would silently reuse (and the editor open)
+# the first one's file. Keep the chronological naming and bump until free.
+while [[ -e $migration_file ]]; do
+  ((timestamp += 1))
+  migration_file="migrations/$timestamp.sh"
+done
 touch "$migration_file"
 
 if (( ! no_edit )); then
