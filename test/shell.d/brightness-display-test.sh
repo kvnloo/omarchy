@@ -31,7 +31,8 @@ cat >"$mock_bin/brightnessctl" <<'SH'
 #!/bin/bash
 printf 'brightnessctl %s\n' "$*" >>"$CALL_LOG"
 if [[ $* == *" -m"* ]]; then
-  printf 'mock_backlight,backlight,40,40%%\n'
+  pct="${BACKLIGHT_PCT:-40}"
+  printf 'mock_backlight,backlight,%s,%s%%\n' "$pct" "$pct"
 fi
 SH
 
@@ -128,6 +129,17 @@ DDC_CURRENT=4 DDC_MAXIMUM=100 run_brightness --no-osd --monitor DP-1 +5%
 grep -F 'ddcutil --bus 7 --skip-ddc-checks --noverify setvcp 10 5' "$call_log" >/dev/null || \
   fail "external low brightness writes the one-percent target"
 pass "external low brightness uses a one-percent step"
+
+# Zero-brightness +5%: percentage 1% rounds to raw 0 on tiny max_brightness
+# drivers (acpi_video0=15), locking the panel. Prefer one raw step up.
+: >"$call_log"
+BACKLIGHT_PCT=0 run_brightness --no-osd --monitor eDP-1 +5%
+grep -F 'brightnessctl -d mock_backlight set +1' "$call_log" >/dev/null || \
+  fail "zero brightness +5% steps one raw value"
+if grep -F 'brightnessctl -d mock_backlight set 1%' "$call_log" >/dev/null; then
+  fail "zero brightness +5% must not target 1%"
+fi
+pass "zero brightness +5% steps one raw value"
 
 cat >"$mock_bin/hyprctl" <<'SH'
 #!/bin/bash
