@@ -178,3 +178,26 @@ PY
 [[ $(jq -r '.mode' <<<"$race_output") == "0o644" ]] ||
   fail "Claude collector keeps cache files readable" "$race_output"
 pass "Claude collector survives concurrent writes to one cache file"
+
+# A history.jsonl entry with no usable timestamp must not truncate the
+# fallback scan: it can prove neither recency nor exhaustion, so it is
+# skipped and the entries before it still count.
+HIST2_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$HISTORY_HOME" "$OPENCODE_HOME" "$PI_HOME" "$HIST2_HOME"' EXIT
+mkdir -p "$HIST2_HOME/.claude"
+
+now_ms2=$(($(date +%s) * 1000))
+cat >"$HIST2_HOME/.claude/history.jsonl" <<EOF2
+{"timestamp":86400000,"sessionId":"old","display":"ancient"}
+{"timestamp":$now_ms2,"sessionId":"s1","display":"one"}
+{"timestamp":$now_ms2,"sessionId":"s2","display":"two"}
+{"display":"no timestamp at all"}
+{"timestamp":$now_ms2,"sessionId":"s3","display":"three"}
+EOF2
+
+hist2_result=$(HOME="$HIST2_HOME" XDG_CACHE_HOME="$HIST2_HOME/.cache" XDG_DATA_HOME="$HIST2_HOME/.local/share" \
+  "$ROOT/bin/omarchy-agent-usage-claude" --force)
+
+[[ $(jq -r '(.todayPrompts|tostring) + "/" + (.todaySessions|tostring)' <<<"$hist2_result") == "3/3" ]] ||
+  fail "Claude collector skips timestamp-less history entries without truncating the scan" "$hist2_result"
+pass "Claude collector skips timestamp-less history entries without truncating the scan"

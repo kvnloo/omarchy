@@ -322,7 +322,12 @@ def today_prompts_from_history(claude_dir: Path) -> tuple[int, int]:
       entry = json.loads(line)
     except Exception:
       continue
-    if number(entry.get("timestamp")) < start_of_day:
+    timestamp = number(entry.get("timestamp"))
+    if timestamp <= 0:
+      # No usable timestamp: this entry cannot prove it is from today, but
+      # neither can it prove the history is exhausted. Skip it, keep scanning.
+      continue
+    if timestamp < start_of_day:
       break
     prompts += 1
     if entry.get("sessionId"):
