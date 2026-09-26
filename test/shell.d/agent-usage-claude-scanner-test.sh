@@ -178,3 +178,30 @@ PY
 [[ $(jq -r '.mode' <<<"$race_output") == "0o644" ]] ||
   fail "Claude collector keeps cache files readable" "$race_output"
 pass "Claude collector survives concurrent writes to one cache file"
+
+# A transcript line that parses as valid JSON but is not the expected object
+# envelope (bare array here) must not abort the scan: the sessions after it
+# in the same file still count.
+POISON_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$HISTORY_HOME" "$OPENCODE_HOME" "$PI_HOME" "$POISON_HOME"' EXIT
+mkdir -p "$POISON_HOME/.claude/projects/example"
+
+poison_timestamp="$(date +%Y-%m-%d)T12:00:00Z"
+cat >"$POISON_HOME/.claude/projects/example/session.jsonl" <<EOF2
+{"timestamp":"$poison_timestamp","type":"assistant","sessionId":"session-9","uuid":"event-1","message":{"id":"message-1","role":"assistant","model":"claude-test","usage":{"input_tokens":2,"output_tokens":231}}}
+{"timestamp":"$poison_timestamp","type":"assistant","sessionId":"session-9","uuid":"event-2","message":{"id":"message-2","role":"assistant","model":"claude-test","usage":{"input_tokens":2,"output_tokens":231}}}
+[{"usage": "poison"}]
+{"timestamp":"$poison_timestamp","type":"assistant","sessionId":"session-9","uuid":"event-3","message":{"id":"message-3","role":"assistant","model":"claude-test","usage":{"input_tokens":2,"output_tokens":231}}}
+{"timestamp":"$poison_timestamp","type":"assistant","sessionId":"session-9","uuid":"event-4","message":{"id":"message-4","role":"assistant","model":"claude-test","usage":{"input_tokens":2,"output_tokens":231}}}
+EOF2
+
+poison_result=$(HOME="$POISON_HOME" XDG_CACHE_HOME="$POISON_HOME/.cache" XDG_DATA_HOME="$POISON_HOME/.local/share" \
+  "$ROOT/bin/omarchy-agent-usage-claude" --force 2>"$POISON_HOME/stderr.txt")
+
+[[ $(jq -r '.todayPrompts' <<<"$poison_result") == "4" ]] ||
+  fail "Claude collector counts sessions past a malformed transcript line" "$poison_result"
+[[ $(jq -r '.todayTotalTokens' <<<"$poison_result") == "932" ]] ||
+  fail "Claude collector keeps token totals past a malformed transcript line" "$poison_result"
+[[ ! -s "$POISON_HOME/stderr.txt" ]] ||
+  fail "Claude collector stays silent on a malformed transcript line" "$(cat "$POISON_HOME/stderr.txt")"
+pass "Claude collector counts sessions past a malformed transcript line"
