@@ -312,13 +312,50 @@ register_command() {
   IFS="$old_ifs"
 }
 
-load_commands() {
-  local file=""
+ROUTER_METADATA_CACHE_VERSION="1"
 
+router_metadata_cache_file() {
+  local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy"
+  printf '%s/router-metadata-v%s.sh' "$cache_dir" "$ROUTER_METADATA_CACHE_VERSION"
+}
+
+write_router_metadata_cache() {
+  local cache_file="$1" tmp_file=""
+  local cache_dir="${cache_file%/*}"
+  [[ -d $cache_dir ]] || mkdir -p "$cache_dir" 2>/dev/null || return 0
+  tmp_file=$(mktemp "$cache_dir/.router-metadata.XXXXXX" 2>/dev/null) || return 0
+  {
+    printf '# omarchy router metadata cache v%s\n' "$ROUTER_METADATA_CACHE_VERSION"
+    printf 'OMARCHY_ROUTER_CACHE_BIN_DIR=%q\n' "$OMARCHY_BIN_DIR"
+    declare -p COMMAND_KEYS COMMAND_ROUTE COMMAND_FALLBACK_ROUTE COMMAND_BINARY \
+      COMMAND_GROUP COMMAND_NAME COMMAND_SUMMARY COMMAND_USAGE COMMAND_ARGS \
+      COMMAND_EXAMPLES COMMAND_REQUIRES_SUDO COMMAND_HIDDEN COMMAND_HAS_SUMMARY \
+      COMMAND_METADATA_ERRORS COMMAND_ALIASES BINARY_TO_KEY ROUTE_TO_KEY \
+      ROUTE_IS_ALIAS ROUTE_COLLISIONS 2>/dev/null | sed -e 's/^declare -a /declare -ga /' -e 's/^declare -A /declare -gA /'
+  } >"$tmp_file" 2>/dev/null && mv -f "$tmp_file" "$cache_file" 2>/dev/null
+  rm -f "$tmp_file" 2>/dev/null
+  return 0
+}
+
+load_commands() {
+  local file="" cache_file=""
+  cache_file=$(router_metadata_cache_file)
+  if [[ -f $cache_file ]] && [[ -z $(find "$OMARCHY_BIN_DIR" -newer "$cache_file" -print -quit 2>/dev/null) ]]; then
+    # shellcheck disable=SC1090
+    if . "$cache_file" 2>/dev/null && [[ ${OMARCHY_ROUTER_CACHE_BIN_DIR:-} == "$OMARCHY_BIN_DIR" ]] && (( ${#COMMAND_KEYS[@]} > 0 )); then
+      return 0
+    fi
+  fi
+  COMMAND_KEYS=(); COMMAND_ROUTE=(); COMMAND_FALLBACK_ROUTE=(); COMMAND_BINARY=()
+  COMMAND_GROUP=(); COMMAND_NAME=(); COMMAND_SUMMARY=(); COMMAND_USAGE=()
+  COMMAND_ARGS=(); COMMAND_EXAMPLES=(); COMMAND_REQUIRES_SUDO=(); COMMAND_HIDDEN=()
+  COMMAND_HAS_SUMMARY=(); COMMAND_METADATA_ERRORS=(); COMMAND_ALIASES=()
+  BINARY_TO_KEY=(); ROUTE_TO_KEY=(); ROUTE_IS_ALIAS=(); ROUTE_COLLISIONS=()
   for file in "$OMARCHY_BIN_DIR"/omarchy-*; do
     [[ -f $file && -x $file ]] || continue
     register_command "$file"
   done
+  write_router_metadata_cache "$cache_file"
 
 }
 
