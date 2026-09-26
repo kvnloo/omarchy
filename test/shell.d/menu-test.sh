@@ -27,6 +27,33 @@ const parsed = menu.parseMenuJsonc(`
 `)
 
 assertEqual(parsed.length, 3, 'menu parses JSONC with comments and trailing commas')
+
+assertEqual(
+  menu.stripJsonc('{"c":{"label":"x, ]y"}}'),
+  '{"c":{"label":"x, ]y"}}',
+  'stripJsonc preserves comma+bracket sequences inside string values'
+)
+assertEqual(
+  menu.stripJsonc('{"c":{"label":"y"},}'),
+  '{"c":{"label":"y"}}',
+  'stripJsonc still drops a trailing object comma'
+)
+assertEqual(
+  menu.stripJsonc('{"a":[1,2,]}'),
+  '{"a":[1,2]}',
+  'stripJsonc still drops a trailing array comma'
+)
+assertEqual(
+  menu.stripJsonc('{"c":{"label":"a\\\", ]b"}}'),
+  '{"c":{"label":"a\\\", ]b"}}',
+  'stripJsonc preserves escaped-quote labels that contain comma+bracket'
+)
+try {
+  JSON.parse(menu.stripJsonc('{..., ,}'))
+  assert(false, 'stripJsonc must not over-tolerate genuinely invalid JSON')
+} catch (e) {
+  assert(true, 'stripJsonc leaves genuinely invalid JSON rejected by JSON.parse')
+}
 assertDeepEqual(
   parsed.find(item => item.id === 'style.theme'),
   {
