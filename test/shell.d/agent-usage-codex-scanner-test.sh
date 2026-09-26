@@ -643,3 +643,46 @@ result=$(HOME="$LEGACY_HOME" CODEX_HOME="$LEGACY_HOME/.codex" XDG_CACHE_HOME="$L
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "15438" ]] ||
   fail "Codex collector never counts a cumulative total alongside per-turn events" "$result"
 pass "Codex collector never counts a cumulative total alongside per-turn events"
+
+# A malformed line in a native session file must not abort the scan of the
+# rest of the file: the envelope can be a non-object, or hold a non-object
+# where an object is read (turn_context payload, info, last_token_usage).
+# Every well-formed event around the poison lines still counts, under the
+# model from the last well-formed turn_context.
+SHAPE_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$INTERRUPTED_HOME" "$LEGACY_HOME" "$SHAPE_HOME"' EXIT
+mkdir -p "$SHAPE_HOME/bin" "$SHAPE_HOME/.codex/sessions/$(date +%Y/%m/%d)"
+cp "$TEST_HOME/bin/codex" "$SHAPE_HOME/bin/codex"
+shape_ts="$(date +%Y-%m-%d)T12:00:00Z"
+cat >"$SHAPE_HOME/.codex/sessions/$(date +%Y/%m/%d)/rollout-shape.jsonl" <<JSON
+{"timestamp":"$shape_ts","type":"turn_context","payload":{"model":"gpt-shape"}}
+{"timestamp":"$shape_ts","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"output_tokens":10,"total_tokens":110}}}}
+{"timestamp":"$shape_ts","type":"turn_context","payload":"gpt-shape-string"}
+{"timestamp":"$shape_ts","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":200,"output_tokens":20,"total_tokens":220}}}}
+["not","an","object"]
+{"timestamp":"$shape_ts","type":"event_msg","payload":{"type":"token_count","info":"oops"}}
+{"timestamp":"$shape_ts","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":"oops","total_token_usage":{"input_tokens":999,"output_tokens":999,"total_tokens":1998}}}}
+{"timestamp":"$shape_ts","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":300,"output_tokens":30,"total_tokens":330}}}}
+JSON
+# The legacy cumulative fallback must survive poison lines too: the malformed
+# line is skipped and the latest well-formed cumulative snapshot still counts
+# exactly once.
+cat >"$SHAPE_HOME/.codex/sessions/$(date +%Y/%m/%d)/rollout-shape-legacy.jsonl" <<JSON
+{"timestamp":"$shape_ts","type":"turn_context","payload":{"model":"gpt-shape-legacy"}}
+{"timestamp":"$shape_ts","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":100,"output_tokens":100,"total_tokens":1100}}}}
+42
+{"timestamp":"$shape_ts","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":5000,"cached_input_tokens":500,"output_tokens":500,"total_tokens":5500}}}}
+JSON
+
+result=$(HOME="$SHAPE_HOME" CODEX_HOME="$SHAPE_HOME/.codex" XDG_CACHE_HOME="$SHAPE_HOME/.cache" XDG_DATA_HOME="$SHAPE_HOME/.local/share" \
+  PATH="$SHAPE_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "6160" ]] ||
+  fail "Codex collector scans past malformed lines in a session file" "$result"
+[[ $(jq -r '.todayPrompts' <<<"$result") == "4" ]] ||
+  fail "Codex collector counts every well-formed event around malformed lines" "$result"
+[[ $(jq -c '.modelUsage["gpt-shape"]' <<<"$result") == '{"inputTokens":600,"outputTokens":60,"cacheReadInputTokens":0,"cacheCreationInputTokens":0}' ]] ||
+  fail "Codex collector keeps model attribution across malformed lines" "$result"
+[[ $(jq -c '.modelUsage["gpt-shape-legacy"]' <<<"$result") == '{"inputTokens":4500,"outputTokens":500,"cacheReadInputTokens":500,"cacheCreationInputTokens":0}' ]] ||
+  fail "Codex collector keeps the legacy cumulative fallback across malformed lines" "$result"
+pass "Codex collector scans past malformed lines in a session file"
