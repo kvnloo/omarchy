@@ -183,6 +183,20 @@ os.environ["TZ"] = "Etc/GMT-2"
 time.tzset()
 summary["bucketDayIsLocal"] = scanner.row_date({"startTime": "2026-07-30T22:00:00Z"}) == "2026-07-31"
 summary["windowIsLocalMidnight"] = scanner.local_midnight_utc(date(2026, 7, 31)) == "2026-07-30T22:00:00Z"
+# A non-finite token cell (json parses 1e999/Infinity to inf) must zero that
+# row's poisoned cells, not abort the whole 30-day scan into "unavailable".
+poisoned = {"serverlessCosts": [
+  {"startTime": "2026-07-31T00:00:00Z", "promptTokens": float("inf"),
+   "cachedPromptTokens": 0, "completionTokens": 10,
+   "group": {"model_name": "accounts/fireworks/models/deepseek-v3p2"}},
+]}
+poison_stats = scanner.summarize_usage(poisoned, date(2026, 7, 31))
+summary["nonFiniteCellZeroed"] = (
+  poison_stats["todayTotalTokens"] == 10
+  and scanner.number(float("inf")) == 0
+  and scanner.number(float("-inf")) == 0
+  and scanner.number("1e999") == 0
+)
 print(json.dumps(summary, separators=(",", ":")))
 PY
 )
@@ -242,3 +256,7 @@ pass "Fireworks collector dates buckets by local day east of Greenwich"
 [[ $(jq -r '.opencodeFallback' <<<"$result") == "true" ]] ||
   fail "Fireworks collector falls back to the opencode key last" "$result"
 pass "Fireworks collector falls back to the opencode key last"
+
+[[ $(jq -r '.nonFiniteCellZeroed' <<<"$result") == "true" ]] ||
+  fail "Fireworks collector zeroes non-finite token cells instead of aborting the scan" "$result"
+pass "Fireworks collector zeroes non-finite token cells instead of aborting the scan"

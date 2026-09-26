@@ -40,7 +40,9 @@ class FireworksError(Exception):
 def number(value: Any) -> int:
   try:
     return max(0, round(float(value or 0)))
-  except (TypeError, ValueError):
+  except (TypeError, ValueError, OverflowError):
+    # float('inf') (json parses 1e999/Infinity) makes round() raise
+    # OverflowError; a poison cell must zero that row, not abort the scan.
     return 0
 
 
