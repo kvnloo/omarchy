@@ -86,6 +86,7 @@ fi
 # Loops every skill directory, so shipping a new one needs no edit here.
 mkdir -p ~/.agents/skills ~/.claude/skills ~/.codex/skills ~/.pi/agent/skills ~/.gemini/config/skills ~/.hermes/skills
 for skill in "$OMARCHY_PATH"/default/agents/skills/*/; do
+  [[ -d $skill ]] || continue
   skill=${skill%/}
   name=${skill##*/}
   ln -sfn "$skill" ~/.agents/skills/"$name"
