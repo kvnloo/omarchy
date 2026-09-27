@@ -9,7 +9,10 @@ if [[ ${OMARCHY_SUDO_NO_UPDATE:-0} == "1" ]]; then
   sudo_options=(--sudo "$sudo_wrapper" --sudoloop=false)
 fi
 
-if pacman -Qem >/dev/null; then
+# pacman -Qem exits 0 even when it prints nothing, so the exit status
+# cannot tell us whether any AUR packages are installed; require
+# non-empty output instead.
+if [[ -n $(pacman -Qemq 2>/dev/null) ]]; then
   if omarchy-pkg-aur-accessible; then
     echo -e "\e[32m\nUpdate AUR packages\e[0m"
     yay "${sudo_options[@]}" -Sua --noconfirm --cleanafter --ignore gcc14,gcc14-libs || exit 1
