@@ -70,7 +70,12 @@ python)
   echo -e "Installing Python...\n"
   mise use --global python@latest
   echo -e "\nInstalling uv...\n"
-  curl -fsSL https://astral.sh/uv/install.sh | sh
+  # Download first, run second: piping curl straight into sh would execute
+  # a truncated script with a success exit code if the download is cut off.
+  uv_installer=$(mktemp)
+  trap 'rm -f "$uv_installer"' EXIT
+  curl -fsSL https://astral.sh/uv/install.sh -o "$uv_installer" || exit 1
+  sh "$uv_installer"
   ;;
 elixir)
   echo -e "Installing Elixir...\n"
@@ -92,7 +97,11 @@ phoenix)
   ;;
 rust)
   echo -e "Installing Rust...\n"
-  bash -c "$(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs)" -- -y
+  # Capture the installer before running it: on a failed download the
+  # command substitution would be empty and `bash -c ""` would silently
+  # succeed, skipping the install with a zero exit code.
+  rustup_script=$(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs) || exit 1
+  bash -c "$rustup_script" -- -y
   ;;
 java)
   echo -e "Installing Java...\n"
@@ -105,7 +114,9 @@ zig)
   ;;
 ocaml)
   echo -e "Installing OCaml...\n"
-  bash -c "$(curl -fsSL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh)"
+  # Same guard as rust: never run an empty or partial installer silently.
+  opam_script=$(curl -fsSL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh) || exit 1
+  bash -c "$opam_script"
   opam init --yes
   eval "$(opam env)"
   opam install ocaml-lsp-server odoc ocamlformat utop --yes
