@@ -25,6 +25,10 @@ case "${TEST_CHECKUPDATES:-updates}" in
     echo "check failed" >&2
     exit 1
     ;;
+  hang)
+    # A blackholed mirror: connects, then never answers.
+    sleep 60
+    ;;
 esac
 SH
 chmod +x "$stub_bin/checkupdates"
@@ -211,3 +215,17 @@ grep -Fx 'omarchy-dev-checkout 1 new commit on origin/quattro' "$stdout" >/dev/n
   fail "update checker reports cached dev commits after a fetch failure" "$(cat "$stdout")"
 [[ ! -s $stderr ]] || fail "update checker keeps dev fetch failures quiet" "$(cat "$stderr")"
 pass "update checker uses cached dev state when fetching is unavailable"
+
+# A dead mirror must not hang the checker: checkupdates gets the same kind of
+# bound the dev-checkout fetch already has, and any failure degrades to the
+# up-to-date message today's checkupdates failures already produce.
+if TEST_CHECKUPDATES=hang TEST_INSTALLED_PACKAGE=omarchy \
+  timeout 45 env "OMARCHY_PATH=/usr/share/omarchy" "TEST_GIT_LOG=$git_log" \
+  "PATH=$stub_bin:$PATH" "$ROOT/bin/omarchy-update-available" >"$stdout" 2>"$stderr"; then
+  status=0
+else
+  status=$?
+fi
+[[ $status -eq 1 ]] || fail "update checker does not hang on a dead mirror" "exit=$status"
+grep -q '^Omarchy is up to date$' "$stdout" || fail "update checker degrades to up-to-date on a dead mirror"
+pass "update checker times out a hung checkupdates"

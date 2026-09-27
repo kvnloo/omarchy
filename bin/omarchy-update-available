@@ -28,7 +28,11 @@ elif pacman -Qq omarchy >/dev/null 2>&1; then
 fi
 
 if [[ -n $package ]]; then
-  update=$(checkupdates --nocolor 2>/dev/null | awk -v package="$package" '$1 == package { print; exit }' || true)
+  # A blackholed mirror would hang checkupdates forever (and with it every
+  # shell start and bar poll); bound it like the dev-checkout fetch above.
+  # The existing `|| true` already absorbs the timeout, so a dead mirror
+  # degrades to "Omarchy is up to date" exactly like a checkupdates failure.
+  update=$(timeout 30 checkupdates --nocolor 2>/dev/null | awk -v package="$package" '$1 == package { print; exit }' || true)
 fi
 
 if [[ -n ${update:-} ]]; then
