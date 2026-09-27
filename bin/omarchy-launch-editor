@@ -35,11 +35,19 @@ nvim | vim | nano | micro | hx | helix | fresh)
   if [[ $inline == "true" ]]; then
     wait_flag=()
     case "${editor##*/}" in
-    code | code-insiders | codium | cursor | windsurf | zed | zeditor | gnome-text-editor | gedit)
+    code | code-insiders | codium | cursor | windsurf | zed | zeditor | gedit)
       wait_flag=(--wait)
       ;;
     subl)
       wait_flag=(-w)
+      ;;
+    gnome-text-editor)
+      # GNOME Text Editor has no --wait option (its only CLI flags are
+      # --ignore-session, --new-window, --standalone, --version, per
+      # editor-application.c upstream); it rejects --wait as unknown.
+      # --standalone spawns a fresh non-unique instance that exits with its
+      # window, so `setsid -w` still blocks until the user is done.
+      wait_flag=(--standalone)
       ;;
     esac
     exec setsid -w uwsm-app -- "$editor" "${wait_flag[@]}" -- "$@"
