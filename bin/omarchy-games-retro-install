@@ -51,9 +51,19 @@ desktop_exec_quote() {
   # inside quotes a literal " and \ take a backslash, and a literal % becomes
   # %%. Without this a quote in a path breaks the argument grouping and a %
   # is treated as a field code (%U, %F, ...) by the launcher.
-  local escaped
-  escaped=$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/%/%%/g')
-  printf '"%s"' "$escaped"
+  # A raw newline/CR/tab would likewise break the value onto a new key line,
+  # so escape them after the backslash doubling, mirroring
+  # desktop_string_escape.
+  local value="$1"
+
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//%/%%}
+  value=${value//$'\t'/\\t}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\n'/\\n}
+
+  printf '"%s"' "$value"
 }
 
 desktop_string_escape() {

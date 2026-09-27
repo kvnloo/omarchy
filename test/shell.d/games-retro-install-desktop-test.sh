@@ -44,14 +44,22 @@ exec_line=$(grep '^Exec=' "$apps/game-u.desktop")
 [[ $exec_line == *'game%%U.sfc"' ]] || fail "%U in ROM path is doubled in Exec" "$exec_line"
 pass "%U in ROM path is doubled in Exec"
 
-# 3. A newline in the filename must not inject a second key line.
+# 3. A newline in the filename must not inject a second key line. The
+# generated entry is identified by its exact slug-derived filename, never by
+# "first file in the directory": $apps still holds the entries from cases
+# 1-2, and head -1 would inspect an unrelated clean file.
+rm -f "$apps"/*.desktop
 newline_rom=$'roms/evil\nExec=touch-pwned.sfc'
 touch "$workdir/$newline_rom"
 install_game "$workdir/$newline_rom"
-desktop_file=$(ls "$apps"/*.desktop | head -1)
+desktop_files=("$apps"/*.desktop)
+(( ${#desktop_files[@]} == 1 )) || fail "newline ROM produces exactly one .desktop entry" "$(ls "$apps")"
+desktop_file="${desktop_files[0]}"
+[[ $desktop_file == */evil-exec-touch-pwned.desktop ]] || fail "newline ROM lands in the slug-derived entry" "$desktop_file"
 line_count=$(wc -l <"$desktop_file")
 (( line_count == 10 )) || fail "newline in filename cannot inject .desktop key lines (got $line_count lines)"
 grep -q '^Exec=touch-pwned$' "$desktop_file" && fail "injected Exec= key line is absent"
+grep -q 'evil\\nExec=touch-pwned' "$desktop_file" || fail "newline in the Exec argument is escaped, not raw"
 pass "newline in filename cannot inject .desktop key lines"
 
 # 4. A name that cleans to nothing still gets a real entry, not ".desktop".
