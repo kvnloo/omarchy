@@ -27,7 +27,13 @@ for file in "${tui_desktop_files[@]}"; do
   icon_name=$(printf '%s\n' "$app_name" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')
   echo "Removing TUI: $app_name"
   rm -f "$file"
-  rm -f "$ICON_DIR/$icon_name.png" "$ICON_DIR/$app_name.png" "$OLD_ICON_DIR/$app_name.png"
+  # install_user_icon keeps the source file extension ($name.$ext), so a
+  # local SVG/JPEG icon would survive a .png-only removal. icon_name is
+  # sanitized to [a-z0-9-], so the glob cannot match dotfiles.
+  if [[ -n $icon_name ]]; then
+    rm -f "$ICON_DIR/$icon_name".*
+  fi
+  rm -f "$ICON_DIR/$app_name.png" "$OLD_ICON_DIR/$app_name.png"
 done
 
 if omarchy-cmd-present update-desktop-database; then
