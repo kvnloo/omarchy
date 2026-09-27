@@ -6,5 +6,9 @@ mapfile -t themes < <(omarchy-theme-extras)
 
 for theme in "${themes[@]}"; do
   echo "Updating: $(basename "$theme")"
-  git -C "$theme" pull
+  # Bound the pull: a stalled remote would otherwise hang the whole update
+  # run. A failure here is non-fatal; the next theme still updates.
+  if ! timeout "${OMARCHY_GIT_PULL_TIMEOUT:-60}" git -C "$theme" pull; then
+    echo "Warning: could not update $(basename "$theme"); continuing." >&2
+  fi
 done

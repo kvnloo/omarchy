@@ -52,9 +52,17 @@ if [[ -d $THEME_PATH ]]; then
   rm -rf "$THEME_PATH"
 fi
 
-# Clone the repo directly to ~/.config/omarchy/themes
-if ! git clone -- "$REPO_URL" "$THEME_PATH"; then
-  echo "Error: Failed to clone theme repo."
+# Clone the repo directly to ~/.config/omarchy/themes. The clone is
+# bounded: a remote that accepts the connection then stalls would otherwise
+# hang the install forever (timeout exits 124).
+clone_rc=0
+timeout "${OMARCHY_GIT_CLONE_TIMEOUT:-120}" git clone -- "$REPO_URL" "$THEME_PATH" || clone_rc=$?
+if (( clone_rc != 0 )); then
+  if (( clone_rc == 124 )); then
+    echo "Error: Timed out cloning theme repo."
+  else
+    echo "Error: Failed to clone theme repo."
+  fi
   exit 1
 fi
 

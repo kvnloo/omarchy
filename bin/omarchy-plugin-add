@@ -117,9 +117,13 @@ mkdir -p "$PLUGINS_DIR"
 
 stage="$PLUGINS_DIR/.add.tmp.$$"
 rm -rf "$stage"
-if ! git clone -- "$url" "$stage"; then
+# Bound the clone: a remote that accepts the connection then stalls would
+# otherwise hang the add forever (timeout exits 124).
+clone_rc=0
+timeout "${OMARCHY_GIT_CLONE_TIMEOUT:-120}" git clone -- "$url" "$stage" || clone_rc=$?
+if (( clone_rc != 0 )); then
   rm -rf "$stage"
-  fail "failed to clone $url"
+  (( clone_rc == 124 )) && fail "timed out cloning $url" || fail "failed to clone $url"
 fi
 
 if ! omarchy-plugin-validate "$stage"; then
