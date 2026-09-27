@@ -533,6 +533,91 @@ navRoot.setActiveMenu('style', true)
 menuRows.root = [{ itemId: 'style' }, { itemId: 'apps' }, { itemId: 'learn' }]
 navRoot.goBack()
 assertEqual(navRoot.selectedIndex, 0, 'menu Back follows the selected row after parent rows reorder')
+// A submenu opened from filtered search results stores an index into the
+// filtered list. After the filter clears, the rebuilt parent has different
+// rows at that index (a search drilldown row may not exist there at all),
+// so Back must not trust the filtered index.
+const searchMenuRows = {
+  root: [{ itemId: 'apps' }, { itemId: 'learn' }, { itemId: 'style' }],
+  'network.wifi': [{ itemId: 'network.wifi.advanced' }],
+  'network.wifi.advanced': []
+}
+// Filtered view of root for a query matching a deeper entry whose parent is
+// the "network" menu: a drilldown row that does not exist in root's list.
+const searchFilteredRows = {
+  root: [{ itemId: 'other.a' }, { itemId: 'other.b' }, { itemId: 'network.wifi' }]
+}
+let searchVisibleRows = searchFilteredRows.root
+const searchDisplayModel = {
+  get count() { return searchVisibleRows.length },
+  get(index) { return searchVisibleRows[index] }
+}
+const searchNavRoot = {
+  activeMenu: 'root', navStack: [], selectedIndex: 2, filterText: 'wifi', cursorActive: true,
+  item(id) { return id === 'root' ? { parent: '' } : { parent: 'network' } },
+  rowSelectable(index) { return !!searchVisibleRows[index] && !searchVisibleRows[index].disabled },
+  rebuildDisplay() {
+    searchVisibleRows = this.filterText.trim() ? searchFilteredRows[this.activeMenu] : searchMenuRows[this.activeMenu]
+    this.selectedIndex = Math.min(Math.max(this.selectedIndex, 0), searchVisibleRows.length - 1)
+  },
+  disarmPointer() {}, invalidateVolatileProvider() {}, loadProviderForMenu() {}
+}
+const searchNavigation = vm.runInNewContext(`(function() { ${navigationFunctions}; return { setActiveMenu, goBack }; })()`, {
+  root: searchNavRoot, displayModel: searchDisplayModel, panel: { freezeCardTop() {} }, pointerGate: { allowInitialSample() {} }
+})
+searchNavRoot.setActiveMenu = searchNavigation.setActiveMenu
+searchNavRoot.goBack = searchNavigation.goBack
+searchNavRoot.setActiveMenu('network.wifi', true)
+assertEqual(searchNavRoot.navStack[0].filtered, true, 'menu nav history marks entries pushed from a filtered display')
+assertEqual(searchNavRoot.navStack[0].itemId, 'network.wifi', 'menu nav history records the launching row id')
+searchNavRoot.goBack()
+assertEqual(searchNavRoot.activeMenu, 'root', 'menu Back from a search-result submenu returns to the parent menu')
+assertEqual(searchNavRoot.selectedIndex, 0, 'menu Back from a search-result submenu does not reuse the filtered index')
+// Nested entry: root -filtered-> network.wifi -> network.wifi.advanced, then
+// Back twice. The deeper Back is unfiltered and keeps its index; the outer
+// Back must not apply the stale filtered index to the rebuilt root.
+searchNavRoot.filterText = 'wifi'
+searchNavRoot.selectedIndex = 2
+searchNavRoot.rebuildDisplay()
+searchNavRoot.setActiveMenu('network.wifi', true)
+searchNavRoot.setActiveMenu('network.wifi.advanced', true)
+searchNavRoot.goBack()
+assertEqual(searchNavRoot.activeMenu, 'network.wifi', 'menu Back returns to the intermediate submenu first')
+searchNavRoot.goBack()
+assertEqual(searchNavRoot.activeMenu, 'root', 'menu Back through nested search-result entries returns to root')
+assertEqual(searchNavRoot.selectedIndex, 0, 'menu Back through nested search-result entries lands on the first row')
+// The id-based restore with its selectable guard is unchanged: when the
+// launching row is still present but disabled, the stored unfiltered index
+// is kept instead of jumping to an id that no longer resolves.
+const disableMenuRows = {
+  root: [{ itemId: 'apps' }, { itemId: 'learn' }, { itemId: 'style' }],
+  style: [{ itemId: 'style.theme' }]
+}
+let disableVisibleRows = disableMenuRows.root
+const disableDisplayModel = {
+  get count() { return disableVisibleRows.length },
+  get(index) { return disableVisibleRows[index] }
+}
+const disableNavRoot = {
+  activeMenu: 'root', navStack: [], selectedIndex: 2, filterText: '', cursorActive: true,
+  item(id) { return id === 'root' ? { parent: '' } : id === 'style' ? { parent: 'root' } : null },
+  rowSelectable(index) { return !!disableVisibleRows[index] && !disableVisibleRows[index].disabled },
+  rebuildDisplay() {
+    disableVisibleRows = disableMenuRows[this.activeMenu]
+    this.selectedIndex = Math.min(Math.max(this.selectedIndex, 0), disableVisibleRows.length - 1)
+  },
+  disarmPointer() {}, invalidateVolatileProvider() {}, loadProviderForMenu() {}
+}
+const disableNavigation = vm.runInNewContext(`(function() { ${navigationFunctions}; return { setActiveMenu, goBack }; })()`, {
+  root: disableNavRoot, displayModel: disableDisplayModel, panel: { freezeCardTop() {} }, pointerGate: { allowInitialSample() {} }
+})
+disableNavRoot.setActiveMenu = disableNavigation.setActiveMenu
+disableNavRoot.goBack = disableNavigation.goBack
+disableNavRoot.setActiveMenu('style', true)
+assertEqual(disableNavRoot.navStack[0].filtered, false, 'menu nav history marks unfiltered entries as unfiltered')
+disableMenuRows.root[2].disabled = true
+disableNavRoot.goBack()
+assertEqual(disableNavRoot.selectedIndex, 2, 'menu Back keeps the stored index when the launching row is only disabled')
 assert(
   /PointerMoveGate\s*\{[\s\S]*id: pointerGate[\s\S]*referenceItem: card[\s\S]*\}/.test(menuQml),
   'menu uses shared pointer movement gate in card coordinates'

@@ -731,15 +731,24 @@ Item {
     if (!root.item(id)) id = "root"
     if (pushHistory && id !== root.activeMenu) {
       var selectedRow = root.selectedIndex >= 0 && root.selectedIndex < displayModel.count ? displayModel.get(root.selectedIndex) : null
+      // The display may be showing filtered search results: the index is only
+      // meaningful against that filtered list, while itemId names the row
+      // itself. Record which one this is so Back never applies a filtered
+      // index to the rebuilt, unfiltered parent.
       root.navStack = root.navStack.concat([{
         menu: root.activeMenu,
         index: root.selectedIndex,
-        itemId: selectedRow ? selectedRow.itemId : ""
+        itemId: selectedRow ? selectedRow.itemId : "",
+        filtered: !!root.filterText.trim()
       }])
     }
     root.activeMenu = id
     root.filterText = ""
-    root.selectedIndex = restoreSelection ? restoreSelection.index : 0
+    // A filtered-list index does not exist in the rebuilt parent (search
+    // drilldown rows may not exist there at all), so fall back to the top
+    // instead of landing on an unrelated row. The itemId lookup below still
+    // restores the launching row whenever it is present and selectable.
+    root.selectedIndex = restoreSelection && !restoreSelection.filtered ? restoreSelection.index : 0
     root.cursorActive = true
     if (fromPointer) pointerGate.allowInitialSample()
     else root.disarmPointer()
