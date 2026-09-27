@@ -38,3 +38,23 @@ grep -Fq 'Not a shipped user config: hypr/missing.lua' "$tmpdir/err" ||
   fail "refresh-config reports missing shipped config"
 
 pass "refresh-config validates against OMARCHY_PATH/config"
+
+echo '-- planted outside config' >"$omarchy_path/planted.txt"
+
+if HOME="$home" OMARCHY_PATH="$omarchy_path" "$ROOT/bin/omarchy-refresh-config" ../planted.txt >"$tmpdir/out" 2>"$tmpdir/err"; then
+  fail "refresh-config refuses '..' traversal"
+fi
+
+grep -Fq "must be relative and must not contain '..'" "$tmpdir/err" ||
+  fail "refresh-config explains the traversal refusal"
+
+[[ ! -e $home/planted.txt ]] ||
+  fail "refresh-config must not write outside ~/.config on traversal"
+
+pass "refresh-config refuses '..' path traversal"
+
+if HOME="$home" OMARCHY_PATH="$omarchy_path" "$ROOT/bin/omarchy-refresh-config" /etc/hostname >"$tmpdir/out" 2>&1; then
+  fail "refresh-config refuses absolute paths"
+fi
+
+pass "refresh-config refuses absolute config paths"

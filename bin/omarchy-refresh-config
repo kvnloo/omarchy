@@ -17,6 +17,13 @@ USAGE
   exit 1
 fi
 
+case $config_file in
+/* | ../* | */../* | */.. | ..)
+  echo "Refusing to refresh '$config_file': config path must be relative and must not contain '..'" >&2
+  exit 1
+  ;;
+esac
+
 user_config_file="${HOME}/.config/$config_file"
 default_config_file="$OMARCHY_PATH/config/$config_file"
 backup_config_file="$user_config_file.bak.$(date +%s)"
