@@ -31,7 +31,7 @@ cat >"$mock_bin/brightnessctl" <<'SH'
 #!/bin/bash
 printf 'brightnessctl %s\n' "$*" >>"$CALL_LOG"
 if [[ $* == *" -m"* ]]; then
-  printf 'mock_backlight,backlight,40,40%%\n'
+  printf 'mock_backlight,backlight,%s,%s%%\n' "${MOCK_PCT:-40}" "${MOCK_PCT:-40}"
 fi
 SH
 
@@ -144,3 +144,14 @@ if PATH="$mock_bin:$PATH" "$ROOT/bin/omarchy-hyprland-monitor-focused-apple"; th
   fail "focused non-Apple display is not detected as Apple"
 fi
 pass "named Apple display is detected independently of focus"
+
+# On drivers with a tiny max_brightness, a +5% step from zero rounds to a raw
+# step of 0 and locks the panel at black. Step one raw value up instead of
+# targeting a percentage.
+: >"$call_log"
+MOCK_PCT=0 run_brightness --no-osd +5% >/dev/null
+grep -F 'brightnessctl -d mock_backlight set +1' "$call_log" >/dev/null || \
+  fail "+5% from zero steps one raw value up" "$(cat "$call_log")"
+grep -F 'set 1%' "$call_log" >/dev/null && \
+  fail "+5% from zero must not target a percentage that rounds to zero" "$(cat "$call_log")"
+pass "+5% from zero steps one raw value up"

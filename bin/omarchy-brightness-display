@@ -92,6 +92,15 @@ else
   # Current brightness percentage
   current=$(backlight_brightness "$device") || exit 1
 
+  # On drivers with a tiny max_brightness (e.g. acpi_video0 at 15), a +5%
+  # step from zero rounds to a raw step of 0 and locks the panel at black.
+  # Step one raw value up instead of targeting a percentage.
+  if [[ $step == "+5%" ]] && (( current == 0 )); then
+    brightnessctl -d "$device" set +1 >/dev/null
+    (( no_osd )) || omarchy-osd -i brightness -p "$(backlight_brightness "$device")"
+    exit 0
+  fi
+
   # Apply non-uniform step size: 1% steps if at or below 5%, otherwise set an
   # absolute target percentage to avoid raw backlight rounding causing uneven OSD steps.
   if [[ $step == "+5%" ]]; then
