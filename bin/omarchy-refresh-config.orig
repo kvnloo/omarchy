@@ -30,8 +30,7 @@ mkdir -p "$(dirname "$user_config_file")"
 
 if [[ -f $user_config_file ]]; then
   cp -f "$user_config_file" "$backup_config_file"
-  # Remove the destination first: a symlinked user config is replaced as a file, never followed into its target.
-  cp -f --remove-destination "$default_config_file" "$user_config_file"
+  cp -f "$default_config_file" "$user_config_file"
 
   if cmp -s "$user_config_file" "$backup_config_file"; then
     rm "$backup_config_file"
@@ -40,5 +39,5 @@ if [[ -f $user_config_file ]]; then
     diff "$user_config_file" "$backup_config_file" || true
   fi
 else
-  cp -f --remove-destination "$default_config_file" "$user_config_file"
+  cp -f "$default_config_file" "$user_config_file"
 fi
