@@ -47,7 +47,9 @@ else
 
   echo
   echo "Downloading Battle.net installer..."
-  curl --fail --location --retry 3 "$INSTALLER_URL" --output "$installer"
+  # Bound the whole transfer: --retry never fires on a hung connection, so a
+  # stalled mirror would otherwise hang the installer forever.
+  curl --fail --location --retry 3 --max-time 300 "$INSTALLER_URL" --output "$installer"
 
   cat <<'EOF'
 
