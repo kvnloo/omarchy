@@ -333,9 +333,11 @@ fi
 
 # Serialize theme changes. Theme switching rebuilds a shared next-theme staging
 # directory and updates current theme/background symlinks; concurrent calls can
-# otherwise race and make one selection appear to be ignored.
-exec 9>"$THEME_SET_LOCK"
-flock 9
+# otherwise race and make one selection appear to be ignored. Fail closed: if
+# the lock cannot be taken, running the critical section unlocked would corrupt
+# the theme state while still reporting success.
+exec 9>"$THEME_SET_LOCK" || exit 1
+flock 9 || exit 1
 
 PREVIOUS_THEME_NAME=$(cat "$CURRENT_THEME_NAME_PATH" 2>/dev/null || true)
 remember_current_theme_background
