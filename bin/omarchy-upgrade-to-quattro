@@ -2270,8 +2270,23 @@ target="$theme_dir/hyprland.conf"
 mkdir -p "$theme_dir"
 accent="7aa2f7"
 if [[ -f $colors ]]; then
-  parsed=$(awk -F= '/^[[:space:]]*accent[[:space:]]*=/ { gsub(/[[:space:]"#]/, "", $2); print $2; exit }' "$colors")
-  [[ -n ${parsed:-} ]] && accent="$parsed"
+  # A trailing TOML comment is not part of the value: deleting every `#`
+  # folded the comment text into the color, so strip the comment outside the
+  # quoted value instead and only accept a real hex color.
+  parsed=$(awk -F= '/^[[:space:]]*accent[[:space:]]*=/ {
+    value = $2
+    sub(/^[[:space:]]+/, "", value)
+    if (match(value, /^"[^"]*"/)) {
+      value = substr(value, RSTART + 1, RLENGTH - 2)
+      sub(/^#/, "", value)
+    } else {
+      sub(/[[:space:]]*#.*$/, "", value)
+      gsub(/[[:space:]]+/, "", value)
+    }
+    print value
+    exit
+  }' "$colors")
+  [[ ${parsed:-} =~ ^[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$ ]] && accent="$parsed"
 fi
 {
   printf '$activeBorderColor = rgb(%s)\n\n' "$accent"
