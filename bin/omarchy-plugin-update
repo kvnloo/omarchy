@@ -40,8 +40,17 @@ update_one() {
   local id="$1"
   local dir="$PLUGINS_DIR/$id"
 
-  if ! git -C "$dir" fetch --quiet origin HEAD; then
-    echo "omarchy-plugin-update: fetch failed for '$id'" >&2
+  # Bound the fetch: a remote that accepts the connection then stalls would
+  # otherwise hang the whole update run. A failure here is non-fatal; the
+  # next plugin still updates.
+  fetch_rc=0
+  timeout "${OMARCHY_GIT_FETCH_TIMEOUT:-60}" git -C "$dir" fetch --quiet origin HEAD || fetch_rc=$?
+  if (( fetch_rc != 0 )); then
+    if (( fetch_rc == 124 )); then
+      echo "omarchy-plugin-update: fetch timed out for '$id'" >&2
+    else
+      echo "omarchy-plugin-update: fetch failed for '$id'" >&2
+    fi
     return 1
   fi
 
