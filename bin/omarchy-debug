@@ -26,7 +26,11 @@ while (( $# > 0 )); do
   esac
 done
 
-LOG_FILE="/tmp/omarchy-debug.log"
+# A fixed /tmp name lets another local user pre-plant a symlink and harvest the
+# debug payload (hardware serials, MACs, network layout) into an attacker-chosen
+# file. Use a private temp file instead.
+LOG_FILE=$(mktemp /tmp/omarchy-debug-log.XXXXXX)
+trap 'rm -f "$LOG_FILE"' EXIT
 
 if [[ $NO_SUDO = "true" ]]; then
   DMESG_OUTPUT="(skipped - --no-sudo flag used)"

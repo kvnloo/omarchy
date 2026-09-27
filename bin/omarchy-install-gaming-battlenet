@@ -57,7 +57,10 @@ app launcher.
 
 EOF
 
-  log="/tmp/omarchy-battlenet-installer.log"
+  # A fixed /tmp name lets another local user pre-plant a symlink and redirect
+  # the installer output into an attacker-chosen file. The background installer
+  # outlives this script, so no EXIT trap (tmpfs is cleared on reboot anyway).
+  log=$(mktemp /tmp/omarchy-battlenet-installer-log.XXXXXX)
   setsid -f sh -c "umu-run '$installer' >'$log' 2>&1" </dev/null >/dev/null 2>&1
   echo "Installer log: $log"
   launched_installer=1

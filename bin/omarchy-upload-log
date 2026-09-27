@@ -5,8 +5,11 @@
 # omarchy:hidden=true
 
 LOG_TYPE="${1:-install}"
-TEMP_LOG="/tmp/upload-log.txt"
-SYSTEM_INFO="/tmp/system-info.txt"
+# Fixed /tmp names let another local user pre-plant a symlink and redirect the
+# uploaded log content (or harvest it). Use private temp files instead.
+TEMP_LOG=$(mktemp /tmp/omarchy-upload-log.XXXXXX)
+SYSTEM_INFO=$(mktemp /tmp/omarchy-system-info.XXXXXX)
+trap 'rm -f "$TEMP_LOG" "$SYSTEM_INFO"' EXIT
 
 # Get system information if fastfetch is available
 if omarchy-cmd-present fastfetch; then
