@@ -14,7 +14,12 @@ start_install_log() {
   if ! omarchy_log_to_stdout; then
     mkdir -p "$(dirname "$OMARCHY_INSTALL_LOG_FILE")"
     touch "$OMARCHY_INSTALL_LOG_FILE"
-    chmod 666 "$OMARCHY_INSTALL_LOG_FILE" 2>/dev/null || true
+    # Never leave the install log world-writable: omarchy-upload-log uploads it
+    # verbatim as a public share link, so any local user could otherwise inject
+    # fabricated content into a maintainer-trusted artifact. All direct file
+    # appends run as root (omarchy-apply-system / omarchy-apply-hardware), and
+    # the user phase logs through stdout, so 644 is sufficient.
+    chmod 644 "$OMARCHY_INSTALL_LOG_FILE" 2>/dev/null || true
   fi
 
   export OMARCHY_START_TIME="${OMARCHY_START_TIME:-$(date '+%Y-%m-%d %H:%M:%S')}"
