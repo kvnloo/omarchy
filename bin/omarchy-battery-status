@@ -70,9 +70,11 @@ threshold_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2);
 
 ac_online=false
 for supply in "$power_supply_path"/*; do
-  [[ -r $supply/type ]] || continue
-  [[ $(<"$supply/type") == "Mains" ]] || continue
-  [[ -r $supply/online ]] || continue
+  [[ -r $supply/type && -r $supply/online ]] || continue
+  type=$(<"$supply/type")
+  # USB-C PD chargers report type USB, not Mains. omarchy-power-present counts
+  # them as external power; the threshold-holding detection must match.
+  [[ $type == "Mains" || $type == "USB" ]] || continue
 
   if [[ $(<"$supply/online") == "1" ]]; then
     ac_online=true
