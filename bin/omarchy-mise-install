@@ -48,12 +48,29 @@ esac
 # hold a new version back for days after it ships. Exported rather than set on
 # the install line alone, so resolving the version to execute agrees with the
 # one just installed.
-rm -f "$HOME/.local/bin/$command"
-cat >"$HOME/.local/bin/$command" <<EOF
+wrapper="$HOME/.local/bin/$command"
+
+# Never clobber a user's own wrapper: only replace a symlink or a regular
+# file we wrote ourselves (the mise shim template below). Anything else is
+# the user's file, so refuse loudly instead of deleting it.
+if [[ -e $wrapper || -L $wrapper ]]; then
+  if [[ -L $wrapper ]]; then
+    rm -f "$wrapper"
+  elif [[ -f $wrapper ]] &&
+    grep -q '^export MISE_MINIMUM_RELEASE_AGE=0$' "$wrapper" &&
+    grep -q '^mise use -g --quiet ' "$wrapper"; then
+    rm -f "$wrapper"
+  else
+    echo "omarchy-mise-install: '$wrapper' is not a mise shim; refusing to overwrite it" >&2
+    exit 1
+  fi
+fi
+
+cat >"$wrapper" <<EOF
 #!/bin/bash
 export MISE_MINIMUM_RELEASE_AGE=0
 mise use -g --quiet $package_arg || exit 1
 exec mise x $package_arg -- $bin_arg "\$@"
 EOF
 
-chmod +x "$HOME/.local/bin/$command"
+chmod +x "$wrapper"

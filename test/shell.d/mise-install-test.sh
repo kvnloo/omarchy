@@ -95,3 +95,36 @@ fi
   fail "an escaping command name removes nothing outside ~/.local/bin"
 
 pass "an escaping command name removes nothing outside ~/.local/bin"
+
+# A user's own wrapper is not a mise shim: refuse loudly and leave it alone.
+user_wrapper="$home/.local/bin/mywrapper"
+printf '#!/bin/bash\necho user wrapper\n' >"$user_wrapper"
+chmod +x "$user_wrapper"
+if install_wrapper somepkg mywrapper >/dev/null 2>"$tmpdir/err"; then
+  fail "installing over a user's own wrapper is refused"
+fi
+grep -Fq 'refusing to overwrite' "$tmpdir/err" ||
+  fail "the refusal says why for a user's own wrapper" "$(cat "$tmpdir/err")"
+[[ $(cat "$user_wrapper") == $'#!/bin/bash\necho user wrapper' ]] ||
+  fail "a refused install leaves the user's wrapper intact" "$(cat "$user_wrapper")"
+pass "a user's own wrapper is refused and left intact"
+
+# A shim we wrote ourselves refreshes in place.
+install_wrapper npm:playwright playwright >/dev/null
+[[ -x $home/.local/bin/playwright ]] ||
+  fail "refreshing an existing shim writes an executable wrapper"
+pass "an existing mise shim is refreshed"
+
+# A symlink is dropped without following it.
+other="$tmpdir/elsewhere"
+printf '#!/bin/bash\necho elsewhere\n' >"$other"
+chmod +x "$other"
+ln -sf "$other" "$home/.local/bin/linked"
+install_wrapper somepkg linked >/dev/null
+[[ -L $home/.local/bin/linked ]] &&
+  fail "a symlink is replaced by the new wrapper"
+[[ -x $home/.local/bin/linked ]] ||
+  fail "installing over a symlink writes the wrapper"
+[[ -f $other ]] ||
+  fail "installing over a symlink keeps the link target"
+pass "a symlink is replaced without touching its target"
