@@ -103,3 +103,15 @@ assert_detects "a self-named reader is detected with a driver bound"
 
 write_usb_devices '1234:5678:Generic USB Device'
 assert_rejects "a machine with no matching USB devices detects nothing"
+
+# Realtek's descriptor spells it "Finger Print" with a space, which plain
+# *fingerprint* misses; vendor 2541 ships the readers behind it.
+write_usb_devices '2541:0101:Realtek Finger Print'
+assert_detects "a Realtek reader is detected by its spaced product string"
+
+write_usb_devices '2541:0101'
+assert_detects "a Realtek reader is detected by its vendor id"
+
+write_usb_devices '2541:0101'
+bind_driver '1-0/1-0:1.0' uvcvideo
+assert_rejects "a Realtek vendor guess bound to a kernel driver is rejected"
