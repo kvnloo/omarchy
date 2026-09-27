@@ -6,6 +6,7 @@ source "$(dirname "$0")/base-test.sh"
 
 theme_set_bin="$ROOT/bin/omarchy-theme-set"
 brightness_bin="$ROOT/bin/omarchy-brightness-display"
+export PATH="$ROOT/bin:$PATH"
 
 t=$(mktemp -d)
 trap 'rm -rf "$t"' EXIT
@@ -118,3 +119,36 @@ XDG_RUNTIME_DIR="$t/xrd" PATH="$t/bstubs:$PATH" \
 grep -q "set 55%" "$t/brightnessctl-args" || fail "brightness step is applied past the guard"
 [[ -f $t/xrd/omarchy-brightness-display.lock ]] || fail "lock file is created"
 pass "brightness-display normal lock acquire and step are unchanged"
+
+# --- fallback lock directory (no XDG_RUNTIME_DIR) ---
+
+# Without XDG_RUNTIME_DIR the lock must land in a private per-UID directory,
+# not directly in shared /tmp: that closes the TOCTOU the pre-open check
+# could not (another local user swapping the pathname between check and open).
+lock_helper="$ROOT/bin/omarchy-lock-dir"
+fallback_dir="/tmp/omarchy-lock-$UID"
+rm -rf "$fallback_dir"
+dir_out=$(env -u XDG_RUNTIME_DIR "$lock_helper") || fail "omarchy-lock-dir works without XDG_RUNTIME_DIR"
+[[ $dir_out == "$fallback_dir" ]] || fail "fallback dir is per-UID under /tmp" "$dir_out"
+[[ $(stat -c %a "$fallback_dir") == "700" ]] || fail "fallback dir is mode 700"
+pass "omarchy-lock-dir creates a private per-UID fallback directory"
+
+# A planted symlink at the fallback directory must be refused, not followed.
+rm -rf "$fallback_dir"
+ln -s "$t" "$fallback_dir"
+if env -u XDG_RUNTIME_DIR "$lock_helper" 2>"$t/ldir-err"; then
+  fail "omarchy-lock-dir refuses a symlinked fallback directory"
+fi
+rm -f "$fallback_dir"
+pass "omarchy-lock-dir refuses a symlinked fallback directory"
+
+# End to end: theme-set without XDG_RUNTIME_DIR locks in the private dir and
+# applies the theme.
+rm -rf "$fallback_dir"
+rm -rf "$t/home/.local"
+env -u XDG_RUNTIME_DIR HOME="$t/home" PATH="$t/stubs:$ROOT/bin:$PATH" \
+  "$theme_set_bin" testtheme >/dev/null 2>&1 || fail "theme-set runs without XDG_RUNTIME_DIR"
+[[ $(<"$t/home/.local/state/omarchy/current/theme.name") == "testtheme" ]] || fail "theme name is recorded"
+[[ -f $fallback_dir/omarchy-theme-set.lock ]] || fail "lock file is created in the private fallback dir"
+rm -rf "$fallback_dir"
+pass "theme-set uses the private fallback lock directory end to end"
