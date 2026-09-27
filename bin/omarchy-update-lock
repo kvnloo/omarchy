@@ -31,6 +31,17 @@ case "${1:-}" in
     fi
 
     mkdir -p "$lock_dir" 2>/dev/null || true
+    # Claim-before-use: never open the lock through a symlink or another
+    # non-regular entry. A planted link would hand the truncating open to an
+    # attacker-chosen file (and a FIFO would hang the open); this script is
+    # the only writer of the lock path, so anything but a regular file here
+    # is foreign. Refusing -- not replacing -- keeps the flock mutual
+    # exclusion intact: two updaters can never hold the lock on different
+    # inodes.
+    if [[ -L $lock_path || ( -e $lock_path && ! -f $lock_path ) ]]; then
+      echo "Refusing to use non-regular update lock: $lock_path" >&2
+      exit 1
+    fi
     exec {OMARCHY_UPDATE_LOCK_FD}>"$lock_path"
     if ! flock -n "$OMARCHY_UPDATE_LOCK_FD"; then
       echo "An Omarchy update is already running."
