@@ -7,7 +7,10 @@ if omarchy-pkg-present brave-origin-beta-bin; then
   omarchy-pkg-drop brave-origin-beta-bin
 
   mkdir -p ~/.config
-  cp -f "$OMARCHY_PATH/config/chromium-flags.conf" ~/.config/brave-origin-flags.conf
+  # Only seed. A user who already has stable flags (e.g. tried stable before
+  # moving to beta) keeps their customizations; omarchy-refresh-config is the
+  # explicit way to take the shipped defaults.
+  [[ -f ~/.config/brave-origin-flags.conf ]] || cp "$OMARCHY_PATH/config/chromium-flags.conf" ~/.config/brave-origin-flags.conf
   rm -f ~/.config/brave-origin-beta-flags.conf
 
   if [[ $default_browser == "brave-origin-beta.desktop" ]]; then
