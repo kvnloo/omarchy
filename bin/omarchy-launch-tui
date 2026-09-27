@@ -7,7 +7,11 @@ if [[ ${1:-} == --app-id=* ]]; then
   APP_ID="${1#--app-id=}"
   shift
 else
-  APP_ID="org.omarchy.$(basename $1)"
+  # First word only: keybindings pass whole command lines (e.g.
+  # "zsh -c 'fastfetch; read -k 1'"), and an unquoted $1 made basename
+  # fail with "extra operand", leaving a broken "org.omarchy." app-id
+  # that hypr window rules never match.
+  APP_ID="org.omarchy.$(basename -- "${1%% *}")"
 fi
 
-exec setsid uwsm-app -- xdg-terminal-exec --app-id=$APP_ID -e "$1" "${@:2}"
+exec setsid uwsm-app -- xdg-terminal-exec --app-id="$APP_ID" -e "$1" "${@:2}"
