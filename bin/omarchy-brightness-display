@@ -74,14 +74,17 @@ fi
 # Drop overlapping brightness key events so concurrent invocations do not race.
 # Hardware key repeat present on some devices can otherwise glitch OSD rendering.
 #
-# Claim-before-use: never open the lock through a symlink or another
-# non-regular entry. A planted link would hand the truncating open to an
-# attacker-chosen file (and a FIFO would hang the open); this script is
-# the only writer of the lock path, so anything but a regular file here
-# is foreign. Refusing -- not replacing -- keeps the flock mutual
-# exclusion intact: two brightness adjustments can never hold the lock
-# on different inodes.
-brightness_lock="${XDG_RUNTIME_DIR:-/tmp}/omarchy-brightness-display.lock"
+# The lock lives in a private, owner-verified runtime directory
+# (omarchy-lock-dir): no other local user can plant a pathname there, so
+# there is no attacker-writable transition between validation and the
+# truncating open below.
+brightness_lock="$(omarchy-lock-dir || exit 1)/omarchy-brightness-display.lock"
+# Sanity check: this script is the only writer of the lock path, so anything
+# but a regular file here is foreign. Refusing -- not replacing -- keeps the
+# flock mutual exclusion intact: two brightness adjustments can never hold
+# the lock on different inodes. (A FIFO would hang the open.) The directory
+# itself is already private, so unlike a bare check-then-open under /tmp,
+# nothing can race this inspection.
 if [[ -L $brightness_lock || ( -e $brightness_lock && ! -f $brightness_lock ) ]]; then
   echo "Refusing to use non-regular brightness lock: $brightness_lock" >&2
   exit 1

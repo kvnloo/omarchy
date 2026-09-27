@@ -6,6 +6,7 @@ source "$(dirname "$0")/base-test.sh"
 
 theme_set_bin="$ROOT/bin/omarchy-theme-set"
 brightness_bin="$ROOT/bin/omarchy-brightness-display"
+export PATH="$ROOT/bin:$PATH"
 
 t=$(mktemp -d)
 trap 'rm -rf "$t"' EXIT
@@ -141,7 +142,7 @@ chmod +x "$t/sstubs/timeout"
 # refused.
 echo "precious" >"$t/svictim.txt"
 ln -s "$t/svictim.txt" "$t/xrd/omarchy-1password-lock.lock"
-if ! XDG_RUNTIME_DIR="$t/xrd" PATH="$t/sstubs:/usr/bin:/bin" \
+if ! XDG_RUNTIME_DIR="$t/xrd" PATH="$t/sstubs:$ROOT/bin:/usr/bin:/bin" \
   "$system_lock_bin" 2>"$t/serr"; then
   fail "system-lock still locks the screen when the helper lock is refused"
 fi
@@ -153,7 +154,7 @@ pass "system-lock refuses a symlinked helper lock path but still locks"
 # A planted FIFO must not hang the lock either.
 rm -f "$t/xrd/omarchy-1password-lock.lock"
 mkfifo "$t/xrd/omarchy-1password-lock.lock"
-if ! timeout 10 env XDG_RUNTIME_DIR="$t/xrd" PATH="$t/sstubs:/usr/bin:/bin" \
+if ! timeout 10 env XDG_RUNTIME_DIR="$t/xrd" PATH="$t/sstubs:$ROOT/bin:/usr/bin:/bin" \
   "$system_lock_bin" 2>/dev/null; then
   fail "system-lock still locks the screen when the helper lock is a FIFO"
 fi
@@ -161,8 +162,40 @@ pass "system-lock refuses a FIFO helper lock path but still locks"
 
 # The normal path still creates the helper lock.
 rm -f "$t/xrd/omarchy-1password-lock.lock"
-XDG_RUNTIME_DIR="$t/xrd" PATH="$t/sstubs:/usr/bin:/bin" \
+XDG_RUNTIME_DIR="$t/xrd" PATH="$t/sstubs:$ROOT/bin:/usr/bin:/bin" \
   "$system_lock_bin" >/dev/null 2>&1
 sleep 1
 [[ -f $t/xrd/omarchy-1password-lock.lock ]] || fail "helper lock file is created"
 pass "system-lock normal helper lock acquire is unchanged"
+
+# --- fallback lock directory (no XDG_RUNTIME_DIR) ---
+
+# Without XDG_RUNTIME_DIR the locks must land in a private per-UID directory,
+# not directly in shared /tmp: that closes the TOCTOU the pre-open check
+# could not (another local user swapping the pathname between check and open).
+lock_helper="$ROOT/bin/omarchy-lock-dir"
+fallback_dir="/tmp/omarchy-lock-$UID"
+rm -rf "$fallback_dir"
+dir_out=$(env -u XDG_RUNTIME_DIR "$lock_helper") || fail "omarchy-lock-dir works without XDG_RUNTIME_DIR"
+[[ $dir_out == "$fallback_dir" ]] || fail "fallback dir is per-UID under /tmp" "$dir_out"
+[[ $(stat -c %a "$fallback_dir") == "700" ]] || fail "fallback dir is mode 700"
+pass "omarchy-lock-dir creates a private per-UID fallback directory"
+
+# A planted symlink at the fallback directory must be refused, not followed.
+rm -rf "$fallback_dir"
+ln -s "$t" "$fallback_dir"
+if env -u XDG_RUNTIME_DIR "$lock_helper" 2>"$t/ldir-err"; then
+  fail "omarchy-lock-dir refuses a symlinked fallback directory"
+fi
+rm -f "$fallback_dir"
+pass "omarchy-lock-dir refuses a symlinked fallback directory"
+
+# End to end: system-lock without XDG_RUNTIME_DIR still locks the screen and
+# puts the helper lock in the private dir.
+rm -rf "$fallback_dir"
+env -u XDG_RUNTIME_DIR PATH="$t/sstubs:$ROOT/bin:/usr/bin:/bin" \
+  "$system_lock_bin" >/dev/null 2>&1 || fail "system-lock runs without XDG_RUNTIME_DIR"
+sleep 1
+[[ -f $fallback_dir/omarchy-1password-lock.lock ]] || fail "helper lock is created in the private fallback dir"
+rm -rf "$fallback_dir"
+pass "system-lock uses the private fallback lock directory end to end"

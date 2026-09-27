@@ -13,16 +13,22 @@ hyprctl switchxkblayout all 0 > /dev/null 2>&1
 # Ensure 1password is locked. Use timeout because `1password --lock` can
 # otherwise leave a full Electron helper tree running after each lock.
 if pgrep -x "1password" >/dev/null && omarchy-cmd-present 1password; then
-  one_password_lock="${XDG_RUNTIME_DIR:-/tmp}/omarchy-1password-lock.lock"
-  # Claim-before-use: never open the lock through a symlink or another
-  # non-regular entry. A planted link would hand the truncating open to an
-  # attacker-chosen file (and a FIFO would hang the open); this script is
-  # the only writer of the lock path, so anything but a regular file here
-  # is foreign. Refusing -- not replacing -- keeps the flock mutual
-  # exclusion intact, and the screen still locks: only the 1password
-  # helper lock is skipped.
-  if [[ -L $one_password_lock || ( -e $one_password_lock && ! -f $one_password_lock ) ]]; then
-    echo "Refusing to use non-regular 1password lock: $one_password_lock" >&2
+  # The lock lives in a private, owner-verified runtime directory
+  # (omarchy-lock-dir): no other local user can plant a pathname there, so
+  # there is no attacker-writable transition between validation and open.
+  one_password_lock=""
+  if lock_dir=$(omarchy-lock-dir 2>/dev/null); then
+    one_password_lock="$lock_dir/omarchy-1password-lock.lock"
+  fi
+  # Sanity check: this script is the only writer of the lock path, so anything
+  # but a regular file here is foreign. Refusing -- not replacing -- keeps the
+  # flock mutual exclusion intact, and the screen still locks: only the
+  # 1password helper lock is skipped. (A FIFO would hang the open.) The
+  # directory itself is already private, so unlike a bare check-then-open
+  # under /tmp, nothing can race this inspection. If the lock directory is
+  # unusable, skip the helper lock but still lock the screen.
+  if [[ -z $one_password_lock || -L $one_password_lock || ( -e $one_password_lock && ! -f $one_password_lock ) ]]; then
+    [[ -z $one_password_lock ]] || echo "Refusing to use non-regular 1password lock: $one_password_lock" >&2
   else
     (
       flock -n 9 || exit 0
