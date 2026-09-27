@@ -87,8 +87,8 @@ gh issue create --repo omacom/omarchy --title "..." --body "..."
 
 Include what happened, what was expected, steps to reproduce, system details from
 `omarchy version`, and diagnostics from `omarchy debug --no-sudo --print` (which
-also writes `/tmp/omarchy-debug.log`; the interactive `omarchy debug` can upload
-it and print a shareable URL worth including).
+also writes the log to a private temp file under `/tmp`; the interactive
+`omarchy debug` can upload it and print a shareable URL worth including).
 
 `gh` cannot attach media. If a screenshot would help, save one and give the user
 the path to drag into the web form.
