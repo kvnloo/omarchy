@@ -39,6 +39,10 @@ output_keybindings() (
   socket_dir=$(mktemp -d)
   socket="$socket_dir/tmux"
   trap 'tmux -S "$socket" kill-server >/dev/null 2>&1 || true; rm -f "$socket"; rmdir "$socket_dir" 2>/dev/null || true' EXIT
+  # The -P prefix strings below need their trailing space: tmux prints the
+  # string directly against the key with no separator of its own (verified
+  # through 3.5a), and the parser splits the table name from the key on
+  # whitespace.
   tmux -S "$socket" -f /dev/null start-server \; \
     unbind-key -a -T prefix \; \
     unbind-key -a -T root \; \
@@ -47,9 +51,9 @@ output_keybindings() (
     source-file "$config_file" \; \
     show-options -g prefix \; \
     show-options -g prefix2 \; \
-    list-keys -aN -T prefix -P "prefix" \; \
-    list-keys -aN -T root -P "root" \; \
-    list-keys -aN -T copy-mode-vi -P "copy-mode-vi" | awk '
+    list-keys -aN -T prefix -P "prefix " \; \
+    list-keys -aN -T root -P "root " \; \
+    list-keys -aN -T copy-mode-vi -P "copy-mode-vi " | awk '
 function key_part_text(part, is_modifier, part_count) {
   gsub(/^\\/, "", part)
 
