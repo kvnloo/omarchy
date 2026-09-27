@@ -19,13 +19,21 @@ TOTAL=${#BACKGROUNDS[@]}
 if (( TOTAL == 0 )); then
   omarchy-notification-send "No background was found for theme" -t 2000
 else
-  # Get current background from symlink
+  # Get current background from symlink, fully resolved: find -L lists a
+  # symlinked entry by its link path while theme-bg-set stores the realpath,
+  # so both sides are canonicalized before comparing below.
   if [[ -L $CURRENT_BACKGROUND_LINK ]]; then
-    CURRENT_BACKGROUND=$(readlink "$CURRENT_BACKGROUND_LINK")
+    CURRENT_BACKGROUND=$(realpath "$CURRENT_BACKGROUND_LINK" 2>/dev/null || readlink "$CURRENT_BACKGROUND_LINK")
   else
     # Default to first background if no symlink exists
     CURRENT_BACKGROUND=""
   fi
+
+  # Canonicalize the candidates the same way, so a backgrounds dir that is
+  # itself a symlink still matches the resolved link target.
+  for i in "${!BACKGROUNDS[@]}"; do
+    BACKGROUNDS[$i]=$(realpath "${BACKGROUNDS[$i]}" 2>/dev/null || printf '%s' "${BACKGROUNDS[$i]}")
+  done
 
   # Find current background index
   INDEX=-1
