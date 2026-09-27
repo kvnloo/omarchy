@@ -76,6 +76,15 @@ function drawingFromBattery(device, onBattery, states, plugSettling) {
   return d.state === s.Discharging
 }
 
+// The profile ownership key must follow the plug status (UPower.onBattery),
+// not the display discharge state: on a weak charger the settled battery
+// still reports Discharging while AC is online, and keying off display
+// discharge would silently save the user's AC profile choice under the
+// battery preset. Same convention as omarchy-powerprofiles-set autodetect.
+function profilePresetKey(onBattery) {
+  return onBattery ? "battery" : "ac"
+}
+
 function batteryIcon(device, onBattery, states) {
   var d = device || {}
   if (!d.isPresent) return ""
@@ -112,6 +121,7 @@ if (typeof module !== "undefined") {
     batteryFraction: batteryFraction,
     chargeThresholdActive: chargeThresholdActive,
     drawingFromBattery: drawingFromBattery,
+    profilePresetKey: profilePresetKey,
     batteryIcon: batteryIcon,
     modeLabel: modeLabel
   }

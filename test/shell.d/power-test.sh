@@ -31,6 +31,17 @@ assertEqual(power.modeLabel({ isPresent: true, percentage: 1, state: states.Full
 assertEqual(power.modeLabel({ isPresent: true, percentage: 0.5, state: states.Discharging }, true, states), 'On battery', 'power labels battery mode')
 assertEqual(power.modeLabel({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states), 'Charging', 'power treats external power as newer than stale discharging state')
 assert(power.drawingFromBattery({ isPresent: true, percentage: 0.5, state: states.Discharging }, true, states, false), 'power draws from battery when unplugged')
+assertEqual(power.profilePresetKey(true), 'battery', 'power saves the profile under the battery preset when unplugged')
+assertEqual(power.profilePresetKey(false), 'ac', 'power saves the profile under the AC preset on external power')
+assertEqual(
+  power.profilePresetKey(false),
+  'ac',
+  'power saves the profile under the AC preset on a weak charger even while the display still reports discharging'
+)
+assert(
+  power.drawingFromBattery({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states, false),
+  'weak-charger fixture: settled battery still discharges on external power'
+)
 assert(power.drawingFromBattery({ isPresent: true, percentage: 0.5, state: states.Charging }, true, states, true), 'power trusts unplugging before battery state refreshes')
 assert(!power.drawingFromBattery({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states, true), 'power trusts plugging in before battery state refreshes')
 assert(power.drawingFromBattery({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states, false), 'power reports draining when a settled battery still discharges on external power')
@@ -49,6 +60,7 @@ assertEqual(
 )
 
 assert(/discharging: \{[\s\S]*?Model\.drawingFromBattery\(device, UPower\.onBattery, upowerStates\(\), root\.plugSettling\)/.test(panelSource), 'power derives charge direction from the settled battery state')
+assert(/actionProc\.command = \["omarchy-powerprofiles-set", Model\.profilePresetKey\(UPower\.onBattery\), profile\]/.test(panelSource), 'power keys profile persistence off plug status, not display discharge')
 assert(/function onOnBatteryChanged\(\) \{[\s\S]*?root\.plugSettling = true[\s\S]*?plugSettleTimer\.restart\(\)/.test(panelSource), 'power opens a settle window on every plug change')
 assert(/if \(b === Qt\.RightButton\) root\.togglePercentage\(\)/.test(panelSource), 'power right click toggles the bar percentage')
 assert(/Object\.assign\([^\n]+showPercentage: !root\.showPercentage[^\n]+\)[\s\S]*updateEntryInline/.test(panelSource), 'power persists the bar percentage setting')
