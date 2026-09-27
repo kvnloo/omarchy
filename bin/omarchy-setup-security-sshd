@@ -103,7 +103,9 @@ authorize_keys_from_github() {
   local username="$1" keys added=0
 
   echo "Fetching keys from https://github.com/$username.keys..."
-  if ! keys=$(curl -fsSL "https://github.com/$username.keys") || [[ -z $keys ]]; then
+  # Bound the fetch: a blackholed endpoint would otherwise hang the setup with
+  # no feedback (curl has no overall timeout by default).
+  if ! keys=$(curl -fsSL --max-time "${OMARCHY_GITHUB_KEYS_TIMEOUT:-30}" "https://github.com/$username.keys") || [[ -z $keys ]]; then
     echo -e "\e[31mCould not fetch any SSH keys for GitHub user '$username'.\e[0m" >&2
     exit 1
   fi
