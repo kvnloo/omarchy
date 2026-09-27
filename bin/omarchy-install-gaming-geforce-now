@@ -8,12 +8,18 @@ set -e
 
 echo "Installing GeForce NOW..."
 omarchy-pkg-add flatpak
-cd /tmp
+# Download into a private directory, never a fixed name under /tmp: another
+# local user could pre-plant /tmp/GeForceNOWSetup.bin as a symlink, and curl
+# -O follows symlinks, so the download would land in an unrelated file while
+# the chmod/exec below still run through the planted path.
+installer_dir=$(mktemp -d)
+trap 'rm -rf "$installer_dir"' EXIT
+installer="$installer_dir/GeForceNOWSetup.bin"
 
 # Download and run GeForce NOW
-curl -LO https://international.download.nvidia.com/GFNLinux/GeForceNOWSetup.bin
-chmod +x GeForceNOWSetup.bin
-./GeForceNOWSetup.bin
+curl -L https://international.download.nvidia.com/GFNLinux/GeForceNOWSetup.bin -o "$installer"
+chmod +x "$installer"
+"$installer"
 
 # Ensure a separate browser process not started by GFN is available.
 # If not, it seems like GFN has a tendency to hang on login.
