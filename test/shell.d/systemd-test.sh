@@ -6,8 +6,68 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 service="$ROOT/default/systemd/user/bt-agent.service"
 
-grep -Fx 'ExecCondition=/usr/bin/systemctl is-active --quiet bluetooth.service' "$service" >/dev/null
-pass "bt-agent skips when bluetooth.service is inactive"
+grep -Eq '^ExecCondition' "$service" &&
+  fail "bt-agent still skips instead of retrying when bluetooth.service is down"
+grep -F 'After=dbus.socket bluetooth.service' "$service" >/dev/null ||
+  fail "bt-agent orders itself after bluetooth.service"
+grep -Fx 'Wants=bluetooth.service' "$service" >/dev/null ||
+  fail "bt-agent pulls in bluetooth.service"
+grep -Fq 'ExecStartPre=' "$service" ||
+  fail "bt-agent polls for bluetoothd before starting"
+grep -Fx 'ConditionPathIsDirectory=/sys/class/bluetooth' "$service" >/dev/null ||
+  fail "bt-agent still skips cleanly on machines without an adapter"
+pass "bt-agent retries through a bluetoothd race instead of skipping"
+
+# The ExecStartPre poll has to fail the unit (so Restart=on-failure retries
+# it) when bluetoothd never appears, and succeed as soon as it does. Drive
+# the exact poll line from the unit with stubbed systemctl/sleep.
+poll=$(sed -n "s/^ExecStartPre=\\/bin\\/bash -c '//p" "$service" | sed "s/'\$//")
+[[ -n $poll ]] ||
+  fail "the bt-agent poll is not an inline bash loop anymore"
+# Drive the stub systemctl instead of the real one; the retry semantics
+# under test are the loop's, not the binary's path.
+stub_tmp=$(mktemp -d)
+trap 'rm -rf "$stub_tmp"' EXIT
+stub_bin="$stub_tmp/bin"
+mkdir -p "$stub_bin"
+poll=${poll//\/usr\/bin\/systemctl/$stub_bin\/systemctl}
+poll=${poll//\/bin\/sleep/$stub_bin\/sleep}
+cat >"$stub_bin/systemctl" <<'SH'
+#!/bin/bash
+count_file="${BT_AGENT_TEST_COUNT:?}"
+count=$(cat "$count_file" 2>/dev/null || echo 0)
+count=$(( count + 1 ))
+printf '%s' "$count" >"$count_file"
+(( count >= ${BT_AGENT_TEST_READY_AFTER:?} )) && exit 0
+exit 1
+SH
+cat >"$stub_bin/sleep" <<'SH'
+#!/bin/bash
+exit 0
+SH
+chmod +x "$stub_bin"/systemctl "$stub_bin"/sleep
+
+count_file="$stub_tmp/count"
+printf '0' >"$count_file"
+
+# bluetoothd appears on the third poll: the unit proceeds.
+BT_AGENT_TEST_COUNT="$count_file" BT_AGENT_TEST_READY_AFTER=3 \
+  PATH="$stub_bin:$PATH" bash -c "$poll" ||
+  fail "the bt-agent poll does not proceed once bluetoothd is active"
+(( $(cat "$count_file") == 3 )) ||
+  fail "the bt-agent poll keeps polling after bluetoothd is active" "calls: $(cat "$count_file")"
+pass "the bt-agent poll proceeds as soon as bluetoothd is active"
+
+# bluetoothd never appears: the poll fails after the full window so the
+# failed unit is retried.
+printf '0' >"$count_file"
+if BT_AGENT_TEST_COUNT="$count_file" BT_AGENT_TEST_READY_AFTER=999999 \
+  PATH="$stub_bin:$PATH" bash -c "$poll"; then
+  fail "the bt-agent poll succeeds when bluetoothd never appears"
+fi
+(( $(cat "$count_file") == 30 )) ||
+  fail "the bt-agent poll does not wait out the full 30s window" "calls: $(cat "$count_file")"
+pass "the bt-agent poll fails the unit after 30s without bluetoothd"
 
 grep -Fx 'Restart=on-failure' "$service" >/dev/null
 pass "bt-agent still restarts after runtime failures"
