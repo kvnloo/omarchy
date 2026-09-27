@@ -92,23 +92,29 @@ recover_modeless
 
 # Process substitution (not a pipe) keeps this loop in the main shell, so
 # sync_poll_state can start and stop the background poll as monitors come and go.
-while read -r event; do
-  case "$event" in
-    monitoradded\>\>*|monitoraddedv2\>\>*)
-      sync_clamshell_after_monitor_change
-      sync_poll_state
-      recover_modeless
-      ;;
-    monitorremoved\>\>*|monitorremovedv2\>\>*)
-      sync_clamshell_after_monitor_change
-      sync_poll_state
-      recover_modeless
-      ;;
-    # A reload while the monitor is unpowered leaves it at 0x0 with no hotplug
-    # to notice, same as at boot. Our own recovery reload lands here too, and is
-    # a no-op while its loop still holds the pid.
-    configreloaded\>\>*)
-      recover_modeless
-      ;;
-  esac
-done < <(socat -U - "UNIX-CONNECT:$SOCKET")
+# A dead or restarted compositor closes the socket and socat exits, ending the
+# read loop; the watcher launches once via exec-once with no supervisor, so
+# reconnect with a small backoff instead of dying silently for the session.
+while true; do
+  while read -r event; do
+    case "$event" in
+      monitoradded\>\>*|monitoraddedv2\>\>*)
+        sync_clamshell_after_monitor_change
+        sync_poll_state
+        recover_modeless
+        ;;
+      monitorremoved\>\>*|monitorremovedv2\>\>*)
+        sync_clamshell_after_monitor_change
+        sync_poll_state
+        recover_modeless
+        ;;
+      # A reload while the monitor is unpowered leaves it at 0x0 with no hotplug
+      # to notice, same as at boot. Our own recovery reload lands here too, and is
+      # a no-op while its loop still holds the pid.
+      configreloaded\>\>*)
+        recover_modeless
+        ;;
+    esac
+  done < <(socat -U - "UNIX-CONNECT:$SOCKET")
+  sleep 2
+done
