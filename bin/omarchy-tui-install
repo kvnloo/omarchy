@@ -37,6 +37,14 @@ install_user_icon() {
   printf '%s\n' "$name"
 }
 
+# The icon is referenced by name from the .desktop file, so only install what
+# actually is an image: without -f curl exits 0 on an HTTP error and the error
+# page would land silently as a broken launcher icon.
+download_icon() {
+  curl -fsSL --max-time 10 -o "$2" "$1" 2>/dev/null &&
+    [[ -s $2 && $(file -b --mime-type "$2") == image/* ]]
+}
+
 if (( $# != 4 )); then
   echo -e "\e[32mLet's create a TUI shortcut you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My TUI")
@@ -61,8 +69,9 @@ mkdir -p "$(dirname "$DESKTOP_FILE")"
 if [[ $ICON_REF =~ ^https?:// ]]; then
   ICON_VALUE=$(safe_icon_name "$APP_NAME")
   mkdir -p "$ICON_DIR"
-  if ! curl -sL -o "$ICON_DIR/$ICON_VALUE.png" "$ICON_REF"; then
-    echo "Error: Failed to download icon."
+  if ! download_icon "$ICON_REF" "$ICON_DIR/$ICON_VALUE.png"; then
+    rm -f "$ICON_DIR/$ICON_VALUE.png"
+    echo "Error: Failed to download a valid image icon from $ICON_REF."
     exit 1
   fi
   gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" &>/dev/null || true
