@@ -58,6 +58,40 @@ assertEqual(merged.items['style.theme'].label, 'Theme picker', 'menu user entrie
 assertEqual(merged.items['style.theme'].order, 2, 'menu preserves original order on override')
 assert(merged.items.root, 'menu injects root when merging sources')
 
+// stripJsonc is string-aware: commas inside string literals (including \"
+// escapes) are copied verbatim even when followed by ] or }, while trailing
+// commas outside strings are still dropped.
+assertEqual(
+  menu.stripJsonc('{"label": "x, ]y", "items": ["a", "b",]}'),
+  '{"label": "x, ]y", "items": ["a", "b"]}',
+  'menu stripJsonc preserves comma+bracket sequences inside strings'
+)
+assertEqual(
+  menu.stripJsonc('{"label": "x, }y",}'),
+  '{"label": "x, }y"}',
+  'menu stripJsonc preserves comma+brace sequences inside strings'
+)
+assertEqual(
+  menu.stripJsonc('{"label": "say \\"hi, ]ok\\"",}'),
+  '{"label": "say \\"hi, ]ok\\""}',
+  'menu stripJsonc preserves escaped-quote strings while stripping the trailing comma'
+)
+assertEqual(
+  menu.stripJsonc('{\n  "a": 1,\n  "b": 2,\n}'),
+  '{\n  "a": 1,\n  "b": 2\n}',
+  'menu stripJsonc strips a trailing object comma'
+)
+assertEqual(
+  menu.stripJsonc('["a", "b",]'),
+  '["a", "b"]',
+  'menu stripJsonc strips a trailing array comma'
+)
+assertEqual(
+  menu.stripJsonc('{"a": 1,} trailing junk'),
+  '{"a": 1} trailing junk',
+  'menu stripJsonc still strips when the file would not parse as JSON'
+)
+
 assertEqual(menu.slugify('Power Saver!'), 'power-saver', 'menu slugifies provider rows')
 assertEqual(menu.pathFor(merged.items, 'style.theme'), 'Style › Theme picker', 'menu builds item paths')
 assertEqual(menu.parentPathFor(merged.items, 'style.theme'), 'Style', 'menu builds parent paths')

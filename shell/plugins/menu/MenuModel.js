@@ -1,7 +1,46 @@
 function stripJsonc(raw) {
-  return String(raw || "")
+  var text = String(raw || "")
     .replace(/^\s*\/\/[^\n]*(\n|$)/gm, "")
-    .replace(/,(\s*[}\]])/g, "$1")
+  // String-aware trailing-comma strip. The old /,(\s*[}\]])/g rewrite was
+  // string-blind, so a label like "x, ]y" was silently rewritten while
+  // remaining valid JSON — corruption with no parse error. Commas inside
+  // string literals (including \" escapes) are copied verbatim; a comma
+  // outside a string is dropped only when the next non-whitespace character
+  // is } or ].
+  var out = []
+  var inString = false
+  var i = 0
+  while (i < text.length) {
+    var ch = text[i]
+    if (inString) {
+      if (ch === "\\" && i + 1 < text.length) {
+        out.push(ch, text[i + 1])
+        i += 2
+        continue
+      }
+      out.push(ch)
+      if (ch === '"') inString = false
+      i += 1
+      continue
+    }
+    if (ch === '"') {
+      inString = true
+      out.push(ch)
+      i += 1
+      continue
+    }
+    if (ch === ",") {
+      var j = i + 1
+      while (j < text.length && /\s/.test(text[j])) j += 1
+      if (j < text.length && (text[j] === "}" || text[j] === "]")) {
+        i += 1 // drop the trailing comma
+        continue
+      }
+    }
+    out.push(ch)
+    i += 1
+  }
+  return out.join("")
 }
 
 function normalizeAliases(value) {
