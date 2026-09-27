@@ -18,4 +18,10 @@ if [[ -z $upstream ]]; then
 fi
 
 echo -e "\e[32m\nUpdate Omarchy dev checkout\e[0m"
-git -C "$OMARCHY_PATH" pull --ff-only
+# Bound the pull: a remote that accepts the connection then stalls would
+# otherwise hang the whole update run. The update aborts loudly on failure
+# rather than continuing with a stale dev checkout.
+if ! timeout "${OMARCHY_GIT_PULL_TIMEOUT:-60}" git -C "$OMARCHY_PATH" pull --ff-only; then
+  echo -e "\e[31mCould not pull the Omarchy dev checkout; aborting the update.\e[0m" >&2
+  exit 1
+fi
