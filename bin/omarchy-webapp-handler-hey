@@ -6,9 +6,13 @@
 url="$1"
 web_url="https://app.hey.com"
 
-# Handle mailto: URLs
+# Handle mailto: URLs. RFC 6068 headers (subject, body, ...) are not part of
+# the address, so strip them; percent-encode the address before embedding it
+# in the to= query parameter.
 if [[ $url =~ ^mailto: ]]; then
-  email=$(echo "$url" | sed 's/mailto://')
+  email="${url#mailto:}"
+  email="${email%%\?*}"
+  email=$(printf '%s' "$email" | jq -sRr @uri)
   web_url="https://app.hey.com/messages/new?to=$email"
 fi
 
