@@ -40,7 +40,13 @@ case "$action" in
 esac
 
 if [[ $action == "mute-toggle" ]]; then
-  runtime_dir="${XDG_RUNTIME_DIR:-/tmp}"
+  # The debounce timestamp lives in the per-user runtime directory, which is
+  # 0700. A fixed name in world-writable /tmp would let any other local
+  # account pre-create it as a symlink and redirect the truncating write at
+  # an arbitrary victim-writable file, or plant a huge timestamp that makes
+  # (now - last < 250) stay true and silently disables the mute key.
+  runtime_dir="${XDG_RUNTIME_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/omarchy}"
+  mkdir -p "$runtime_dir"
   debounce_file="$runtime_dir/omarchy-audio-output-volume-mute-toggle.last"
   now=$(date +%s%3N)
   last=0
