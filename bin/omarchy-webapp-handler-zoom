@@ -3,17 +3,27 @@
 # omarchy:summary=Open Zoom web meetings from browser protocol links
 # omarchy:args=[url]
 
-url="$1"
+set -euo pipefail
+
+url="${1:-}"
 web_url="https://app.zoom.us/wc/home"
 
 if [[ $url =~ ^zoom(mtg|us):// ]]; then
   confno=$(echo "$url" | sed -n 's/.*[?&]confno=\([^&]*\).*/\1/p')
 
-  if [[ -n $confno ]]; then
+  # Zoom meeting IDs are numeric (9-11 digits). The confno value comes from a
+  # protocol link any website can trigger, so it must not be embedded raw:
+  # "123?evil=1" reshapes the query string, "123#frag" injects a fragment the
+  # web client reads, and "../../x" walks the join path off /wc/join/.
+  if [[ $confno =~ ^[0-9]+$ ]]; then
     pwd=$(echo "$url" | sed -n 's/.*[?&]pwd=\([^&]*\).*/\1/p')
 
     if [[ -n $pwd ]]; then
-      web_url="https://app.zoom.us/wc/join/$confno?pwd=$pwd"
+      # The password arrives percent-encoded and was re-embedded verbatim.
+      # Normalize through decode-then-encode so a reserved character can
+      # never reshape the URL no matter how the link was constructed.
+      pwd_encoded=$(printf '%s' "$pwd" | python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(urllib.parse.unquote(sys.stdin.read()), safe=""), end="")')
+      web_url="https://app.zoom.us/wc/join/$confno?pwd=$pwd_encoded"
     else
       web_url="https://app.zoom.us/wc/join/$confno"
     fi
