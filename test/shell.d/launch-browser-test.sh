@@ -26,6 +26,9 @@ cat >"$mock_bin/xdg-settings" <<'SH'
 SH
 cat >"$mock_bin/xdg-mime" <<'SH'
 #!/bin/bash
+if [[ ${OMARCHY_TEST_XDG_MIME_EMPTY:-0} == "1" ]]; then
+  exit 0
+fi
 if [[ $* == "query default x-scheme-handler/https" ]]; then
   echo chromium.desktop
 fi
@@ -95,3 +98,14 @@ HOME="$test_home" PATH="$mock_bin:$PATH" OMARCHY_TEST_BROWSER_LAUNCH="$launch_lo
 
 [[ ! -e $launch_log ]] || fail "browser launcher starts no browser when the running one takes the URL"
 pass "browser launcher hands a URL to the running browser"
+
+rm -f "$launch_log" "$focus_log"
+if HOME="$test_home" PATH="$mock_bin:$PATH" HYPRLAND_INSTANCE_SIGNATURE=test \
+  OMARCHY_TEST_XDG_SETTINGS_EMPTY=1 OMARCHY_TEST_XDG_MIME_EMPTY=1 \
+  OMARCHY_TEST_BROWSER_LAUNCH="$launch_log" OMARCHY_TEST_BROWSER_FOCUS="$focus_log" \
+  bash "$ROOT/bin/omarchy-launch-browser" "https://example.test/none" 2>/dev/null; then
+  fail "browser launcher refuses to launch with no default browser configured"
+fi
+[[ ! -e $launch_log ]] || fail "browser launcher spawns nothing with no default browser configured"
+[[ ! -e $focus_log ]] || fail "browser launcher steals no focus with no default browser configured"
+pass "browser launcher refuses to launch with no default browser configured"
