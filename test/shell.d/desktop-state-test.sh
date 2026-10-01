@@ -71,6 +71,18 @@ jq -e '
 [[ $(jq -r '.revision' <<<"$first") == $(jq -r '.revision' <<<"$second") ]] ||
   fail "desktop state revision is deterministic for unchanged state"
 
+reordered_monitors=$(jq -c 'reverse' <<<"$monitors")
+reordered_workspaces=$(jq -c 'reverse' <<<"$workspaces")
+reordered_clients=$(jq -c 'reverse' <<<"$clients")
+reordered=$(
+  monitors=$reordered_monitors
+  workspaces=$reordered_workspaces
+  clients=$reordered_clients
+  run_state
+)
+[[ $(jq -r '.revision' <<<"$first") == $(jq -r '.revision' <<<"$reordered") ]] ||
+  fail "desktop state revision changes when compositor enumeration order changes"
+
 pass "desktop state normalizes Hyprland state with a stable revision"
 
 changed_clients=${clients/\[2100,100\]/[2200,100]}
