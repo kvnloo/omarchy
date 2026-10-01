@@ -25,6 +25,14 @@ esac
 SH
 chmod +x "$mock_bin/hyprctl"
 
+cat >"$mock_bin/socat" <<'SH'
+#!/bin/bash
+printf '%s\n' \
+  'openwindow>>0xabc,1,foot,Agent' \
+  'monitoraddedv2>>1,DP-1,Secondary'
+SH
+chmod +x "$mock_bin/socat"
+
 monitors='[
   {"id":0,"name":"HDMI-A-1","description":"Primary","width":1920,"height":1080,"x":0,"y":0,"scale":1.0,"transform":0,"focused":true,"activeWorkspace":{"id":1},"specialWorkspace":{"id":0}},
   {"id":1,"name":"DP-1","description":"Secondary","width":2560,"height":1440,"x":1920,"y":0,"scale":1.0,"transform":0,"focused":false,"activeWorkspace":{"id":2},"specialWorkspace":{"id":0}}
@@ -110,3 +118,21 @@ if PATH="$mock_bin:$PATH" \
 fi
 
 pass "desktop state fails closed on malformed compositor payloads"
+
+events=$(
+  PATH="$mock_bin:$PATH" \
+    XDG_RUNTIME_DIR="$test_tmp/runtime" \
+    HYPRLAND_INSTANCE_SIGNATURE="fixture-instance" \
+    "$ROOT/bin/omarchy-desktop-state" --watch
+)
+
+jq -s -e '
+  length == 2
+  and .[0].schema == "omarchy.desktop-event.v1"
+  and .[0].type == "invalidate"
+  and .[0].event == "openwindow"
+  and .[0].data == "0xabc,1,foot,Agent"
+  and .[1].event == "monitoraddedv2"
+' <<<"$events" >/dev/null || fail "desktop state watch normalizes Hyprland invalidation events"
+
+pass "desktop state watch exposes compositor invalidations without polling"
