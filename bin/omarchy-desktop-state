@@ -3,6 +3,7 @@
 # omarchy:summary=Print a deterministic structured snapshot of the current Hyprland desktop
 # omarchy:group=desktop
 # omarchy:name=state
+# omarchy:args=[--watch]
 # omarchy:hidden=true
 
 set -euo pipefail
@@ -13,6 +14,41 @@ for command_name in hyprctl jq sha256sum; do
     exit 1
   }
 done
+
+if [[ ${1:-} == "--watch" ]]; then
+  (($# == 1)) || {
+    echo "Usage: omarchy desktop state [--watch]" >&2
+    exit 2
+  }
+  command -v socat >/dev/null 2>&1 || {
+    echo "missing required command: socat" >&2
+    exit 1
+  }
+  [[ -n ${XDG_RUNTIME_DIR:-} && -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || {
+    echo "Hyprland runtime identity is unavailable" >&2
+    exit 1
+  }
+  socket="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+  while IFS= read -r event; do
+    [[ -n $event ]] || continue
+    if [[ $event == *">>"* ]]; then
+      kind=${event%%>>*}
+      data=${event#*>>}
+    else
+      kind="unknown"
+      data=$event
+    fi
+    jq -cn \
+      --arg schema "omarchy.desktop-event.v1" \
+      --arg event "$kind" \
+      --arg data "$data" \
+      '{schema: $schema, type: "invalidate", event: $event, data: $data}'
+  done < <(socat -U - "UNIX-CONNECT:$socket")
+  exit 0
+elif (($# != 0)); then
+  echo "Usage: omarchy desktop state [--watch]" >&2
+  exit 2
+fi
 
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
