@@ -15,6 +15,8 @@ const panelSource = fs.readFileSync(root + '/shell/plugins/panels/bluetooth/Pane
 
 assert(/IpcHandler[\s\S]*?function toggleBluetooth\(\) \{ root\.toggleBluetooth\(\) \}/.test(panelSource), 'bluetooth exposes the radio toggle over IPC')
 assert(/manageIpc: false/.test(panelSource), 'bluetooth owns its IPC handler so it can extend the target methods')
+assert(/deviceListFingerprint/.test(panelSource), 'bluetooth fingerprints device name/alias fields so Model.js regrouping rebinds')
+assert(/var _fingerprint = deviceListFingerprint/.test(panelSource), 'bluetooth deviceGroups depends on the name/alias fingerprint')
 
 // Writing adapter.enabled sets BlueZ Powered, which does not survive a reboot.
 assert(/function toggleBluetooth\(\)[\s\S]*?execDetached\(\["omarchy-bluetooth-power", adapter\.enabled \? "off" : "on"\]\)/.test(panelSource), 'bluetooth toggles the radio through the rfkill soft block')
@@ -52,16 +54,22 @@ assert(/Component\.onDestruction: \{[\s\S]{0,400}owesDiscoveryStop = true[\s\S]{
 
 assert(bluetooth.isUuidLike('0000110b-0000-1000-8000-00805f9b34fb'), 'bluetooth detects UUID-like names')
 assert(bluetooth.isAddressLike('AA:BB:CC:DD:EE:FF'), 'bluetooth detects address-like names')
+assert(bluetooth.isAddressLike('08-FF-44-4F-EE-C5'), 'bluetooth detects dash-separated MAC placeholder names')
 assertEqual(bluetooth.normalizedAddress('AA:BB_CC-dd-ee-ff'), 'aabbccddeeff', 'bluetooth normalizes BlueZ and PipeWire address formats')
 assert(!bluetooth.hasHumanName({ name: 'AA:BB:CC:DD:EE:FF' }), 'bluetooth rejects address-only device labels')
+assert(!bluetooth.hasHumanName({ name: '08-FF-44-4F-EE-C5' }), 'bluetooth rejects dash MAC placeholder labels')
 assert(bluetooth.hasHumanName({ deviceName: 'MX Master 3S' }), 'bluetooth accepts human device labels')
+assert(bluetooth.isListedDevice({ name: 'AA:BB:CC:DD:EE:FF', connected: true }), 'bluetooth lists connected devices even with MAC placeholder names')
+assert(!bluetooth.isListedDevice({ name: '08-FF-44-4F-EE-C5', connected: false }), 'bluetooth still hides undiscovered MAC placeholders')
+assert(bluetooth.isListedDevice({ name: "Rade's AirPods Max", connected: false }), 'bluetooth lists devices once BlueZ supplies a human name')
 
 const devices = [
   { name: 'Speaker', connected: false, paired: true, address: '2' },
   { name: 'Headphones', connected: true, address: '1' },
   { name: 'Keyboard', connected: false, address: '3' },
   { name: 'AA:BB:CC:DD:EE:FF', connected: true, address: '4' },
-  { name: 'Mouse', connected: false, trusted: true, address: '5' }
+  { name: 'Mouse', connected: false, trusted: true, address: '5' },
+  { name: '08-FF-44-4F-EE-C5', connected: false, address: '6' }
 ]
 
 const arrayLikeDevices = {
@@ -76,9 +84,24 @@ assertDeepEqual(
 )
 
 const lists = bluetooth.deviceLists(devices)
-assertDeepEqual(lists.connected.map(bluetooth.deviceLabel), ['Headphones'], 'bluetooth groups connected devices')
+assertDeepEqual(lists.connected.map(bluetooth.deviceLabel), ['AA:BB:CC:DD:EE:FF', 'Headphones'], 'bluetooth groups connected devices including MAC placeholders')
 assertDeepEqual(lists.known.map(bluetooth.deviceLabel), ['Mouse', 'Speaker'], 'bluetooth groups known devices by label')
 assertDeepEqual(lists.discovered.map(bluetooth.deviceLabel), ['Keyboard'], 'bluetooth groups discovered devices')
+assertDeepEqual(
+  bluetooth.deviceLists([
+    { name: '08-FF-44-4F-EE-C5', connected: false, address: 'a' },
+    { name: "Rade's AirPods Max", connected: false, address: 'a' }
+  ]).discovered.map(bluetooth.deviceLabel),
+  ["Rade's AirPods Max"],
+  'bluetooth shows a device under Available after its MAC placeholder becomes a human name'
+)
+assertDeepEqual(
+  bluetooth.deviceLists([
+    { name: '08-FF-44-4F-EE-C5', connected: true, address: 'a' }
+  ]).connected.map(bluetooth.deviceLabel),
+  ['08-FF-44-4F-EE-C5'],
+  'bluetooth shows a connected device even while the label is still a MAC placeholder'
+)
 assertDeepEqual(bluetooth.visibleSections(lists, true), ['connected', 'known', 'discovered'], 'bluetooth shows discovered section while scanning')
 assertDeepEqual(bluetooth.visibleSections(lists, false), ['connected', 'known'], 'bluetooth hides discovered section when not scanning')
 
