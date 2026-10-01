@@ -80,9 +80,9 @@ Item {
   property color background: Color.bar.background
   property color urgent: Color.bar.active
 
-  Behavior on barForeground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: Style.duration(420); easing.type: Easing.InOutCubic } }
-  Behavior on background { ColorAnimation { duration: Style.duration(420); easing.type: Easing.InOutCubic } }
-  Behavior on urgent { ColorAnimation { duration: Style.duration(420); easing.type: Easing.InOutCubic } }
+  Behavior on barForeground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  Behavior on background { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  Behavior on urgent { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   property var tooltipTarget: null
   property var pendingTooltipTarget: null
   property string tooltipText: ""
@@ -550,6 +550,21 @@ Item {
 
   function releasePopout(owner) {
     if (activePopout === owner) activePopout = null
+  }
+
+  // Close whatever KeyboardPanel / PopupCard currently owns the bar's
+  // single-popout slot. Screensaver launch needs this: an open panel holds
+  // layer-shell keyboard focus, so the new toplevel never becomes
+  // activewindow and Hyprland's fullscreen windowrule for
+  // org.omarchy.screensaver fails to apply.
+  function closeActivePopout() {
+    if (!activePopout) return false
+    var owner = activePopout
+    if ("close" in owner) owner.close()
+    else if ("closeForPopoutSwitch" in owner) owner.closeForPopoutSwitch()
+    else return false
+    if (activePopout === owner) activePopout = null
+    return true
   }
 
   readonly property bool vertical: position === "left" || position === "right"
@@ -1182,7 +1197,7 @@ Item {
   // changes land in quick succession, stranding the bar off screen until the
   // shell restarts. `omarchy-toggle-bar` nudges this after flipping the flag
   // so the probe re-reads it even when the watch has gone quiet.
-  ShellIpc {
+  IpcHandler {
     target: "omarchy.bar"
 
     // Start rather than restart: a probe already in flight was launched by the
@@ -1509,7 +1524,7 @@ Item {
         opacity: root.barMoveCandidate === modelData ? (root.transparent ? 0.45 : 0.7) : 0
 
         Behavior on opacity {
-          NumberAnimation { duration: Style.duration(140); easing.type: Easing.OutCubic }
+          NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
         }
       }
     }
@@ -1895,7 +1910,7 @@ Item {
       z: 50
 
       Behavior on opacity {
-        NumberAnimation { duration: Style.duration(120); easing.type: Easing.OutCubic }
+        NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
       }
     }
 
