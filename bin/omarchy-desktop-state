@@ -53,7 +53,7 @@ canonical=$(
             kind: "hyprland",
             instance: (if $instance == "" then null else $instance end)
           },
-          monitors: [
+          monitors: ([
             $monitors[]
             | {
                 id: (.id // null),
@@ -69,8 +69,8 @@ canonical=$(
                 active_workspace: (.activeWorkspace.id // null),
                 special_workspace: (.specialWorkspace.id // null)
               }
-          ],
-          workspaces: [
+          ] | sort_by([(.id // -1), (.name // "")])),
+          workspaces: ([
             $workspaces[]
             | {
                 id: (.id // null),
@@ -81,8 +81,8 @@ canonical=$(
                 fullscreen: (.hasfullscreen // false),
                 last_window: (.lastwindow // null)
               }
-          ],
-          windows: [
+          ] | sort_by(.id // -1)),
+          windows: ([
             $clients[]
             | select((.mapped // true) == true)
             | {
@@ -102,7 +102,7 @@ canonical=$(
                 fullscreen: (.fullscreen // 0),
                 hidden: (.hidden // false)
               }
-          ],
+          ] | sort_by(.id // "")),
           active: {
             workspace: ($active_workspace.id // null),
             window: ($active_window.address // null),
