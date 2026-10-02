@@ -41,7 +41,7 @@ BarWidget {
       font.pixelSize: Style.font.body
       Behavior on color {
         enabled: !root.bar || root.bar.foregroundAnimationEnabled
-        ColorAnimation { duration: 160 }
+        ColorAnimation { duration: Style.duration(160) }
       }
     }
 
@@ -66,7 +66,7 @@ BarWidget {
 
         SequentialAnimation on x {
           id: scrollAnim
-          running: labelText.needsScroll && !root.popupOpen && !root.bar.vertical
+          running: labelText.needsScroll && !root.popupOpen && !root.bar.vertical && !Style.reduceMotion
                    && activePlayer
                    && activePlayer.playbackState === MprisPlaybackState.Playing
           loops: Animation.Infinite
