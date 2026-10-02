@@ -18,9 +18,11 @@ STUB
 
 cat >"$scratch/bin/pacman" <<'STUB'
 #!/bin/bash
-if [[ ${1:-} == "-Qo" && ${2:-} == "$OMARCHY_MODULES_ROOT/$OWNED_KERNEL/" ]]; then
-  exit 0
-fi
+[[ ${1:-} == "-Qo" ]] || exit 1
+case ${2:-} in
+  "$OMARCHY_MODULES_ROOT/$OWNED_KERNEL/modules.order") exit 0 ;;
+  "$OMARCHY_MODULES_ROOT/$HEADERS_KERNEL/") exit 0 ;;
+esac
 exit 1
 STUB
 
@@ -50,8 +52,9 @@ chmod +x "$scratch/bin/"*
 run_case() {
   local running="$1"
   local owned="$2"
+  local headers="${3:-}"
   : >"$log"
-  RUNNING_KERNEL="$running" OWNED_KERNEL="$owned" TEST_LOG="$log"     OMARCHY_MODULES_ROOT="$scratch/modules" HOME="$scratch/home"     PATH="$scratch/bin:$PATH"     "$ROOT/bin/omarchy-update-restart" >/dev/null
+  RUNNING_KERNEL="$running" OWNED_KERNEL="$owned" HEADERS_KERNEL="$headers" TEST_LOG="$log"    OMARCHY_MODULES_ROOT="$scratch/modules" HOME="$scratch/home"     PATH="$scratch/bin:$PATH"     "$ROOT/bin/omarchy-update-restart" >/dev/null
 }
 
 mkdir -p "$scratch/modules/7.2.2-2-aarch64-ARCH"
@@ -71,3 +74,8 @@ run_case "7.2.2-2-aarch64-ARCH" "not-the-running-kernel"
 grep -q 'Linux kernel has been updated. Reboot?' "$log" ||
   fail "unowned modules directory cannot suppress reboot" "$(cat "$log")"
 pass "only package-owned module directories count as installed kernels"
+
+run_case "7.2.2-2-aarch64-ARCH" "7.2.3-1-aarch64-ARCH" "7.2.2-2-aarch64-ARCH"
+grep -q 'Linux kernel has been updated. Reboot?' "$log" ||
+  fail "headers left behind for the running kernel cannot suppress reboot" "$(cat "$log")"
+pass "headers owning the running kernel's modules directory still request reboot"
