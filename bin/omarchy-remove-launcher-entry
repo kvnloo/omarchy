@@ -85,14 +85,18 @@ plugin_owner_for_desktop() {
 
   # A plugin owns a launcher whose own command lives in its tree. The desktop id,
   # Path=, Icon= and secondary actions can name a plugin without belonging to it.
-  commands=$(awk '/^\[/ { main = ($0 == "[Desktop Entry]") } main && /^(Exec|TryExec)=/ { sub(/^[^=]*=/, ""); print }' "$desktop_file")
-  while read -r command _; do
-    command=${command#\"}
-    command=${command%\"}
-    [[ $command == /* ]] || continue
+  commands=$(awk '/^\[/ { main = ($0 == "[Desktop Entry]") } main && /^(Exec|TryExec)[ \t]*=/ { sub(/^[^=]*=[ \t]*/, ""); print }' "$desktop_file")
+  while IFS= read -r command; do
+    if [[ $command == \"* ]]; then
+      command=${command#\"}
+      command=${command%%\"*}
+    else
+      command=${command%%[[:space:]]*}
+    fi
+    [[ $command == /* && $command != */../* ]] || continue
 
     # The literal path catches a symlinked plugin, the resolved one a symlinked command.
-    for candidate in "$(realpath -sm "$command")" "$(readlink -f "$command" 2>/dev/null || true)"; do
+    for candidate in "$command" "$(readlink -f "$command" 2>/dev/null || true)"; do
       case "$candidate" in
         "$plugins_dir"/*/*)
           path=${candidate#"$plugins_dir"/}

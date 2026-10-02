@@ -56,10 +56,10 @@ Name=Docker
 Exec=xdg-terminal-exec --app-id=TUI.tile -e lazydocker
 DESKTOP
 
-cat >"$tmp_dir/system/applications/native.desktop" <<'DESKTOP'
+cat >"$tmp_dir/system/applications/native.desktop" <<DESKTOP
 [Desktop Entry]
 Name=Native
-Exec=native
+Exec=$tmp_dir/home/.config/omarchy/plugins/native/bin/native
 DESKTOP
 
 cat >"$tmp_dir/data/applications/aliens.desktop" <<'DESKTOP'
@@ -97,7 +97,7 @@ ln -s "$tmp_dir/dev/linked" "$tmp_dir/home/.config/omarchy/plugins/linked.widget
 cat >"$tmp_dir/data/applications/linked.desktop" <<DESKTOP
 [Desktop Entry]
 Name=Linked
-Exec=$tmp_dir/home/.config/omarchy/plugins/linked.widget/bin/run
+Exec = $tmp_dir/home/.config/omarchy/plugins/linked.widget/bin/run
 DESKTOP
 
 mkdir -p "$tmp_dir/home/.config/omarchy/plugins/notes"
@@ -115,6 +115,12 @@ Path=$tmp_dir/home/.config/omarchy/plugins/omacom.mail
 
 [Desktop Action helper]
 Exec=$tmp_dir/home/.config/omarchy/plugins/omacom.mail/bin/handler
+DESKTOP
+
+cat >"$tmp_dir/data/applications/escape.desktop" <<DESKTOP
+[Desktop Entry]
+Name=Escape
+Exec="$tmp_dir/home/.config/omarchy/plugins/notes/bin dir/../../../../../usr/bin/run" %u
 DESKTOP
 
 mkdir -p "$tmp_dir/home/.config/omarchy/plugins/native"
@@ -138,6 +144,7 @@ export HOME="$tmp_dir/home"
 "$ROOT/bin/omarchy-remove-launcher-entry" borrowed-icon.desktop "Borrowed Icon"
 "$ROOT/bin/omarchy-remove-launcher-entry" notes.desktop Notes
 "$ROOT/bin/omarchy-remove-launcher-entry" editor.desktop Editor
+"$ROOT/bin/omarchy-remove-launcher-entry" escape.desktop Escape
 
 mapfile -t lines <"$TEST_LOG"
 
@@ -180,6 +187,6 @@ pass "launcher remove deletes plugin desktop files after removing the plugin"
   fail "Icon= under a plugin tree never implies plugin ownership"
 pass "Icon-only references cannot remove a plugin"
 
-[[ ! -e $tmp_dir/data/applications/notes.desktop && ! -e $tmp_dir/data/applications/editor.desktop ]] ||
-  fail "a desktop id, Path= or desktop action matching a plugin removes only the desktop file"
-pass "a desktop id, Path= or desktop action cannot remove a plugin"
+[[ ! -e $tmp_dir/data/applications/notes.desktop && ! -e $tmp_dir/data/applications/editor.desktop && ! -e $tmp_dir/data/applications/escape.desktop ]] ||
+  fail "a desktop id, Path=, desktop action or path leaving a plugin removes only the desktop file"
+pass "a desktop id, Path=, desktop action or path leaving a plugin cannot remove a plugin"
