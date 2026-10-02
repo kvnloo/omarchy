@@ -68,8 +68,8 @@ Name=Aliens
 Exec=retroarch -L /usr/lib/libretro/fbneo_libretro.so /home/example/Games/roms/fbneo/aliens.zip
 DESKTOP
 
-mkdir -p "$tmp_dir/config/omarchy/plugins/omamail/icons"
-touch "$tmp_dir/config/omarchy/plugins/omamail/icons/app.png"
+mkdir -p "$tmp_dir/home/.config/omarchy/plugins/omamail/icons"
+touch "$tmp_dir/home/.config/omarchy/plugins/omamail/icons/app.png"
 cat >"$tmp_dir/data/applications/omamail.desktop" <<'DESKTOP'
 [Desktop Entry]
 Name=Omamail
@@ -77,20 +77,22 @@ Exec=true
 MimeType=x-scheme-handler/mailto;
 DESKTOP
 
-mkdir -p "$tmp_dir/config/omarchy/plugins/omacom.mail/bin"
-touch "$tmp_dir/config/omarchy/plugins/omacom.mail/bin/handler"
+mkdir -p "$tmp_dir/home/.config/omarchy/plugins/omacom.mail/bin"
+touch "$tmp_dir/home/.config/omarchy/plugins/omacom.mail/bin/handler"
 cat >"$tmp_dir/data/applications/mail-handler.desktop" <<DESKTOP
 [Desktop Entry]
 Name=Mail Handler
-Exec=$tmp_dir/config/omarchy/plugins/omacom.mail/bin/handler %u
+Exec=$tmp_dir/home/.config/omarchy/plugins/omacom.mail/bin/handler %u
 DESKTOP
 
 cat >"$tmp_dir/data/applications/borrowed-icon.desktop" <<DESKTOP
 [Desktop Entry]
 Name=Borrowed Icon
 Exec=true
-Icon=$tmp_dir/config/omarchy/plugins/omamail/icons/app.png
+Icon=$tmp_dir/home/.config/omarchy/plugins/omamail/icons/app.png
 DESKTOP
+
+mkdir -p "$tmp_dir/home/.config/omarchy/plugins/native"
 
 write_fake_command omarchy-plugin-remove plugin
 
@@ -100,7 +102,6 @@ export XDG_DATA_HOME="$tmp_dir/data"
 export XDG_DATA_DIRS="$tmp_dir/system"
 export XDG_CONFIG_HOME="$tmp_dir/config"
 export HOME="$tmp_dir/home"
-mkdir -p "$HOME"
 
 "$ROOT/bin/omarchy-remove-launcher-entry" Basecamp.desktop Basecamp
 "$ROOT/bin/omarchy-remove-launcher-entry" Docker.desktop Docker
@@ -135,11 +136,11 @@ pass "launcher remove detects plugin-owned executable paths"
 (( ${#lines[@]} == 5 )) || fail "plain user desktop removal emits no extra actions" "$(printf '%s\n' "${lines[@]}")"
 pass "plain user desktop removal emits no extra actions"
 
-[[ -e $tmp_dir/data/applications/omamail.desktop ]] ||
-  fail "plugin remover owns cleanup for matching plugin desktop ids"
-[[ -e $tmp_dir/data/applications/mail-handler.desktop ]] ||
-  fail "plugin remover owns cleanup for plugin executable paths"
-pass "plugin lifecycle owns plugin launcher cleanup"
+[[ ! -e $tmp_dir/data/applications/omamail.desktop ]] ||
+  fail "launcher remove deletes a plugin desktop file matched by id"
+[[ ! -e $tmp_dir/data/applications/mail-handler.desktop ]] ||
+  fail "launcher remove deletes a plugin desktop file matched by executable"
+pass "launcher remove deletes plugin desktop files after removing the plugin"
 
 [[ ! -e $tmp_dir/data/applications/borrowed-icon.desktop ]] ||
   fail "Icon-only plugin references remain ordinary user desktop files"

@@ -79,7 +79,7 @@ fi
 
 plugin_owner_for_desktop() {
   local plugins_dir candidate resolved exec_paths path plugin_id
-  plugins_dir="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins"
+  plugins_dir="$HOME/.config/omarchy/plugins"
 
   [[ -d $plugins_dir ]] || return 1
 
@@ -120,11 +120,11 @@ plugin_owner_for_desktop() {
   return 1
 }
 
-if plugin_id="$(plugin_owner_for_desktop)"; then
-  exec omarchy-plugin-remove --yes "$plugin_id"
-fi
-
 if is_user_desktop_file; then
+  if plugin_id="$(plugin_owner_for_desktop)"; then
+    omarchy-plugin-remove --yes "$plugin_id"
+  fi
+
   display_name="${entry_name:-$desktop_name}"
   rm -f "$desktop_file"
   update-desktop-database "${desktop_file%/*}" &>/dev/null || true
