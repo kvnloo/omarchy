@@ -1,0 +1,153 @@
+#!/bin/bash
+
+# omarchy:summary=Print a deterministic structured snapshot of the current Hyprland desktop
+# omarchy:group=desktop
+# omarchy:name=state
+# omarchy:args=[--watch]
+# omarchy:hidden=true
+
+set -euo pipefail
+
+for command_name in hyprctl jq sha256sum; do
+  command -v "$command_name" >/dev/null 2>&1 || {
+    echo "missing required command: $command_name" >&2
+    exit 1
+  }
+done
+
+if [[ ${1:-} == "--watch" ]]; then
+  (($# == 1)) || {
+    echo "Usage: omarchy desktop state [--watch]" >&2
+    exit 2
+  }
+  command -v socat >/dev/null 2>&1 || {
+    echo "missing required command: socat" >&2
+    exit 1
+  }
+  [[ -n ${XDG_RUNTIME_DIR:-} && -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]] || {
+    echo "Hyprland runtime identity is unavailable" >&2
+    exit 1
+  }
+  socket="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+  while IFS= read -r event; do
+    [[ -n $event ]] || continue
+    if [[ $event == *">>"* ]]; then
+      kind=${event%%>>*}
+      data=${event#*>>}
+    else
+      kind="unknown"
+      data=$event
+    fi
+    jq -cn \
+      --arg schema "omarchy.desktop-event.v1" \
+      --arg event "$kind" \
+      --arg data "$data" \
+      '{schema: $schema, type: "invalidate", event: $event, data: $data}'
+  done < <(socat -U - "UNIX-CONNECT:$socket")
+  exit 0
+elif (($# != 0)); then
+  echo "Usage: omarchy desktop state [--watch]" >&2
+  exit 2
+fi
+
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+
+capture_json() {
+  local query=$1
+  local expected_type=$2
+  local output="$tmpdir/$query.json"
+
+  hyprctl -j "$query" >"$output"
+  jq -e --arg type "$expected_type" 'type == $type' "$output" >/dev/null
+}
+
+capture_json monitors array
+capture_json workspaces array
+capture_json clients array
+capture_json activeworkspace object
+capture_json activewindow object
+
+canonical=$(
+  jq -S -c -n \
+    --arg schema "omarchy.desktop-state.v1" \
+    --arg instance "${HYPRLAND_INSTANCE_SIGNATURE:-}" \
+    --slurpfile monitors "$tmpdir/monitors.json" \
+    --slurpfile workspaces "$tmpdir/workspaces.json" \
+    --slurpfile clients "$tmpdir/clients.json" \
+    --slurpfile activeworkspace "$tmpdir/activeworkspace.json" \
+    --slurpfile activewindow "$tmpdir/activewindow.json" \
+    '
+      ($monitors[0]) as $monitors
+      | ($workspaces[0]) as $workspaces
+      | ($clients[0]) as $clients
+      | ($activeworkspace[0]) as $active_workspace
+      | ($activewindow[0]) as $active_window
+      | {
+          schema: $schema,
+          compositor: {
+            kind: "hyprland",
+            instance: (if $instance == "" then null else $instance end)
+          },
+          monitors: ([
+            $monitors[]
+            | {
+                id: (.id // null),
+                name: (.name // null),
+                description: (.description // null),
+                x: (.x // null),
+                y: (.y // null),
+                width: (.width // null),
+                height: (.height // null),
+                scale: (.scale // null),
+                transform: (.transform // null),
+                focused: (.focused // false),
+                active_workspace: (.activeWorkspace.id // null),
+                special_workspace: (.specialWorkspace.id // null)
+              }
+          ] | sort_by([(.id // -1), (.name // "")])),
+          workspaces: ([
+            $workspaces[]
+            | {
+                id: (.id // null),
+                name: (.name // null),
+                monitor: (.monitor // null),
+                monitor_id: (.monitorID // null),
+                windows: (.windows // null),
+                fullscreen: (.hasfullscreen // false),
+                last_window: (.lastwindow // null)
+              }
+          ] | sort_by(.id // -1)),
+          windows: ([
+            $clients[]
+            | select((.mapped // true) == true)
+            | {
+                id: (.address // null),
+                pid: (.pid // null),
+                class: (.class // null),
+                initial_class: (.initialClass // null),
+                title: (.title // null),
+                initial_title: (.initialTitle // null),
+                x: (.at[0] // null),
+                y: (.at[1] // null),
+                width: (.size[0] // null),
+                height: (.size[1] // null),
+                workspace: (.workspace.id // null),
+                monitor: (.monitor // null),
+                floating: (.floating // false),
+                fullscreen: (.fullscreen // 0),
+                hidden: (.hidden // false)
+              }
+          ] | sort_by(.id // "")),
+          active: {
+            workspace: ($active_workspace.id // null),
+            window: ($active_window.address // null),
+            pid: ($active_window.pid // null)
+          }
+        }
+    '
+)
+
+revision=$(printf '%s' "$canonical" | sha256sum | awk '{print $1}')
+
+jq -S -c --arg revision "$revision" '. + {revision: $revision}' <<<"$canonical"
