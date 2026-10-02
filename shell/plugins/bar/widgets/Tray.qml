@@ -55,8 +55,8 @@ BarWidget {
     ? submenuStack[submenuDepth - 1].opener.children
     : trayMenuOpener.children
 
-  // Changing level rebuilds the row delegates synchronously, so the next
-  // row lands under a cursor that hasn't moved. Submenu clicks used to be
+  // Changing level rebuilds the row delegates a tick after the click, so the
+  // next row lands under a cursor that hasn't moved. Submenu clicks used to be
   // silent no-ops, which trained users to click them twice, and that second
   // click would now fire whatever entry took the spot. Ignore row clicks for
   // a beat after each level change; a deliberate follow-up click is slower.
@@ -775,8 +775,7 @@ BarWidget {
                 onClicked: {
                   if (root.menuLevelSettling) return
                   if (menuRow.modelData.hasChildren) {
-                    // Reset scroll BEFORE swapping the model: the swap destroys
-                    // this delegate synchronously and ids stop resolving after.
+                    // Reset scroll before entering so the submenu shows from the top.
                     trayMenuFlick.contentY = 0
                     root.enterSubmenu(menuRow.modelData, menuRow.rowText)
                   } else {
