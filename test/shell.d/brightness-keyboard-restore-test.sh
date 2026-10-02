@@ -10,7 +10,7 @@ trap 'rm -rf "$test_tmp"' EXIT
 stub_bin="$test_tmp/bin"
 led_dir="$test_tmp/leds"
 state_dir="$test_tmp/state"
-mkdir -p "$stub_bin" "$led_dir/asus::kbd_backlight" "$state_dir"
+mkdir -p "$stub_bin" "$led_dir/asus::kbd_backlight" "$state_dir" "$test_tmp/run"
 
 # Remap the hardcoded sysfs glob so the script can discover a fake LED device.
 script_copy="$test_tmp/omarchy-brightness-keyboard"
@@ -102,7 +102,7 @@ SH
 chmod +x "$stub_bin/brightnessctl"
 
 run_kb() {
-  BRIGHTNESS_STATE_DIR="$state_dir" PATH="$stub_bin:$PATH" bash "$script_copy" "$@"
+  BRIGHTNESS_STATE_DIR="$state_dir" XDG_RUNTIME_DIR="$test_tmp/run" PATH="$stub_bin:$PATH" bash "$script_copy" "$@"
 }
 
 # --- off then restore keeps a non-zero saved value ----------------------------
@@ -132,3 +132,19 @@ run_kb off
 run_kb restore
 [[ $(cat "$state_dir/current") == 77 ]] || fail "restore after double off lost the original non-zero"
 pass "off twice then restore still restores the original non-zero level"
+
+# --- a user-chosen 0 after an earlier restore stays off -----------------------
+printf '50\n' >"$state_dir/current"
+rm -f "$state_dir/saved"
+
+run_kb off
+run_kb restore
+[[ $(cat "$state_dir/current") == 50 ]] || fail "restore returns the level saved by the first lock"
+
+printf '0\n' >"$state_dir/current"
+run_kb off
+[[ $(cat "$state_dir/saved") == 0 ]] || fail "off from a user-chosen 0 saves 0"
+
+run_kb restore
+[[ $(cat "$state_dir/current") == 0 ]] || fail "restore turned a user-chosen 0 back on"
+pass "a backlight turned off by the user stays off across a later lock"
