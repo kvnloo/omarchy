@@ -148,3 +148,19 @@ run_kb off
 run_kb restore
 [[ $(cat "$state_dir/current") == 0 ]] || fail "restore turned a user-chosen 0 back on"
 pass "a backlight turned off by the user stays off across a later lock"
+
+# --- a 0 chosen with the brightness keys while locked survives the next off ---
+printf '50\n' >"$state_dir/current"
+rm -f "$state_dir/saved"
+
+run_kb off
+run_kb --no-osd up
+run_kb --no-osd down
+[[ $(cat "$state_dir/current") == 0 ]] || fail "up then down while blanked lands on 0"
+
+run_kb off
+[[ $(cat "$state_dir/saved") == 0 ]] || fail "off after a keyed 0 saves 0"
+
+run_kb restore
+[[ $(cat "$state_dir/current") == 0 ]] || fail "restore turned a keyed 0 back on"
+pass "a 0 chosen with the brightness keys while locked stays off"
