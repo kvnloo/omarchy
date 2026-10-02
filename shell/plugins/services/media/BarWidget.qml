@@ -71,6 +71,8 @@ BarWidget {
                    && activePlayer.playbackState === MprisPlaybackState.Playing
           loops: Animation.Infinite
 
+          // Back to the start before every leading pause, not only the first.
+          PropertyAction { target: labelText; property: "x"; value: 0 }
           PauseAnimation { duration: 3500 }
           NumberAnimation {
             from: 0

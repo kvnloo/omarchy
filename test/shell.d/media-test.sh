@@ -79,5 +79,6 @@ assert(/SequentialAnimation on x/.test(widgetSource), 'media widget uses a seque
 assert(/activePlayer\.playbackState === MprisPlaybackState\.Playing/.test(scrollAnim[1]), 'media marquee runs only while playbackState is Playing')
 assert(/labelText\.needsScroll && !root\.popupOpen && !root\.bar\.vertical/.test(scrollAnim[1]), 'media marquee still requires overflow and horizontal bar')
 assert(!/\.isPlaying/.test(scrollAnim[1]), 'media marquee does not gate on isPlaying')
+assert(/loops: Animation\.Infinite\s*(?:\/\/[^\n]*\s*)?PropertyAction \{ target: labelText; property: "x"; value: 0 \}\s*PauseAnimation/.test(widgetSource), 'media marquee holds the title start on every pass, not only the first')
 assert(/onRunningChanged:/.test(widgetSource) && /labelText\.x = 0/.test(widgetSource), 'media marquee resets x when the animation stops')
 JS
