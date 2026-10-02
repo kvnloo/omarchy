@@ -11,6 +11,22 @@ INTERNAL=$(omarchy-hyprland-monitor-laptop)
 # The first active external monitor
 EXTERNAL=$(hyprctl monitors -j | jq -r '.[] | select(.name | test("^(eDP|LVDS|DSI)-") | not).name' | head -n 1)
 
+# After writing the toggle and reloading, another display manager (e.g. hyprmoncfg)
+# may override monitor layout and leave the external in extended mode. Never claim
+# success unless the compositor reports the requested mirror.
+mirror_took_effect() {
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if hyprctl monitors all -j 2>/dev/null | jq -e --arg external "$EXTERNAL" --arg internal "$INTERNAL" '
+      any(.[]; .name == $external and .mirrorOf == $internal)
+    ' >/dev/null; then
+      return 0
+    fi
+    (( attempt < 5 )) && sleep 0.1
+  done
+  return 1
+}
+
 on() {
   if [[ -z $EXTERNAL ]]; then
     omarchy-notification-send -g 󰍹 "No external monitors found for mirror"
@@ -35,8 +51,14 @@ on() {
 
   if omarchy-hyprland-toggle-disabled $TOGGLE; then
     printf 'hl.monitor({ output = "%s", mode = "preferred", position = "auto", scale = 1, mirror = "%s" })\n' "$EXTERNAL" "$INTERNAL" >"$TOGGLE_FLAG"
-    omarchy-notification-send -g 󰍹 "Mirroring enabled ($EXTERNAL)"
     hyprctl reload
+    if ! mirror_took_effect; then
+      rm -f "$TOGGLE_FLAG"
+      hyprctl reload
+      omarchy-notification-send -g 󰍹 "Mirror did not take effect (another display manager may be overriding)"
+      exit 1
+    fi
+    omarchy-notification-send -g 󰍹 "Mirroring enabled ($EXTERNAL)"
   fi
 }
 
