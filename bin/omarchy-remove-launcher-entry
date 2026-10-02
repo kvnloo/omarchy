@@ -78,44 +78,33 @@ if [[ $exec_line =~ (^|[[:space:]])(\$TERMINAL|xdg-terminal-exec)[[:space:]].*-e
 fi
 
 plugin_owner_for_desktop() {
-  local plugins_dir candidate resolved exec_paths path plugin_id
+  local plugins_dir commands command candidate path plugin_id
   plugins_dir="$HOME/.config/omarchy/plugins"
 
   [[ -d $plugins_dir ]] || return 1
 
-  # The common plugin launcher shape uses the plugin id as the desktop id.
-  if [[ -e $plugins_dir/$desktop_name || -L $plugins_dir/$desktop_name ]]; then
-    printf '%s\n' "$desktop_name"
-    return 0
-  fi
+  # A plugin owns a launcher whose own command lives in its tree. The desktop id,
+  # Path=, Icon= and secondary actions can name a plugin without belonging to it.
+  commands=$(awk '/^\[/ { main = ($0 == "[Desktop Entry]") } main && /^(Exec|TryExec)=/ { sub(/^[^=]*=/, ""); print }' "$desktop_file")
+  while read -r command _; do
+    command=${command#\"}
+    command=${command%\"}
+    [[ $command == /* ]] || continue
 
-  # A launcher with another desktop id can still be owned by a plugin when its
-  # executable or working directory resolves inside that plugin tree. Icon= is
-  # deliberately excluded: borrowing an icon must never grant removal authority.
-  exec_paths=$(sed -n 's/^\(Exec\|TryExec\|Path\)=//p' "$desktop_file")
-  while IFS= read -r candidate; do
-    [[ -n $candidate ]] || continue
-
-    # Exec field codes occur after the executable in the plugin launchers this
-    # handles. Keep only the command token; quoted paths with spaces are not
-    # inferred as ownership and safely fall through to normal desktop removal.
-    candidate=${candidate%% \%*}
-    candidate=$(awk '{print $1}' <<<"$candidate")
-    [[ $candidate == /* ]] || continue
-
-    resolved=$(readlink -f "$candidate" 2>/dev/null || true)
-    [[ -n $resolved ]] || continue
-    case "$resolved" in
-      "$plugins_dir"/*)
-        path=${resolved#"$plugins_dir"/}
-        plugin_id=${path%%/*}
-        if [[ -n $plugin_id && ( -e $plugins_dir/$plugin_id || -L $plugins_dir/$plugin_id ) ]]; then
-          printf '%s\n' "$plugin_id"
-          return 0
-        fi
-        ;;
-    esac
-  done <<<"$exec_paths"
+    # The literal path catches a symlinked plugin, the resolved one a symlinked command.
+    for candidate in "$(realpath -sm "$command")" "$(readlink -f "$command" 2>/dev/null || true)"; do
+      case "$candidate" in
+        "$plugins_dir"/*/*)
+          path=${candidate#"$plugins_dir"/}
+          plugin_id=${path%%/*}
+          if [[ $plugin_id =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && ( -e $plugins_dir/$plugin_id || -L $plugins_dir/$plugin_id ) ]]; then
+            printf '%s\n' "$plugin_id"
+            return 0
+          fi
+          ;;
+      esac
+    done
+  done <<<"$commands"
 
   return 1
 }

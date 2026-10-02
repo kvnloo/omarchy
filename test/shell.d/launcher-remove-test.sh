@@ -70,10 +70,10 @@ DESKTOP
 
 mkdir -p "$tmp_dir/home/.config/omarchy/plugins/omamail/icons"
 touch "$tmp_dir/home/.config/omarchy/plugins/omamail/icons/app.png"
-cat >"$tmp_dir/data/applications/omamail.desktop" <<'DESKTOP'
+cat >"$tmp_dir/data/applications/omamail.desktop" <<DESKTOP
 [Desktop Entry]
 Name=Omamail
-Exec=true
+Exec="$tmp_dir/home/.config/omarchy/plugins/omamail/scripts/mailto.sh" %u
 MimeType=x-scheme-handler/mailto;
 DESKTOP
 
@@ -90,6 +90,31 @@ cat >"$tmp_dir/data/applications/borrowed-icon.desktop" <<DESKTOP
 Name=Borrowed Icon
 Exec=true
 Icon=$tmp_dir/home/.config/omarchy/plugins/omamail/icons/app.png
+DESKTOP
+
+mkdir -p "$tmp_dir/dev/linked/bin"
+ln -s "$tmp_dir/dev/linked" "$tmp_dir/home/.config/omarchy/plugins/linked.widget"
+cat >"$tmp_dir/data/applications/linked.desktop" <<DESKTOP
+[Desktop Entry]
+Name=Linked
+Exec=$tmp_dir/home/.config/omarchy/plugins/linked.widget/bin/run
+DESKTOP
+
+mkdir -p "$tmp_dir/home/.config/omarchy/plugins/notes"
+cat >"$tmp_dir/data/applications/notes.desktop" <<'DESKTOP'
+[Desktop Entry]
+Name=Notes
+Exec=/usr/bin/notes
+DESKTOP
+
+cat >"$tmp_dir/data/applications/editor.desktop" <<DESKTOP
+[Desktop Entry]
+Name=Editor
+Exec=/usr/bin/editor
+Path=$tmp_dir/home/.config/omarchy/plugins/omacom.mail
+
+[Desktop Action helper]
+Exec=$tmp_dir/home/.config/omarchy/plugins/omacom.mail/bin/handler
 DESKTOP
 
 mkdir -p "$tmp_dir/home/.config/omarchy/plugins/native"
@@ -109,7 +134,10 @@ export HOME="$tmp_dir/home"
 "$ROOT/bin/omarchy-remove-launcher-entry" aliens.desktop Aliens
 "$ROOT/bin/omarchy-remove-launcher-entry" omamail.desktop Omamail
 "$ROOT/bin/omarchy-remove-launcher-entry" mail-handler.desktop "Mail Handler"
+"$ROOT/bin/omarchy-remove-launcher-entry" linked.desktop Linked
 "$ROOT/bin/omarchy-remove-launcher-entry" borrowed-icon.desktop "Borrowed Icon"
+"$ROOT/bin/omarchy-remove-launcher-entry" notes.desktop Notes
+"$ROOT/bin/omarchy-remove-launcher-entry" editor.desktop Editor
 
 mapfile -t lines <"$TEST_LOG"
 
@@ -126,24 +154,32 @@ pass "launcher remove opens package uninstall flow"
 pass "launcher remove deletes user-owned desktop files"
 
 [[ ${lines[3]} == "plugin:false:--yes omamail" || ${lines[3]} == "plugin::--yes omamail" ]] ||
-  fail "launcher remove routes a matching plugin desktop id through plugin remove" "${lines[3]}"
-pass "launcher remove routes matching plugin desktop ids through plugin remove"
+  fail "launcher remove detects a quoted executable inside a plugin tree" "${lines[3]}"
+pass "launcher remove detects quoted plugin-owned executable paths"
 
 [[ ${lines[4]} == "plugin:false:--yes omacom.mail" || ${lines[4]} == "plugin::--yes omacom.mail" ]] ||
   fail "launcher remove detects an executable inside a plugin tree" "${lines[4]}"
 pass "launcher remove detects plugin-owned executable paths"
 
-(( ${#lines[@]} == 5 )) || fail "plain user desktop removal emits no extra actions" "$(printf '%s\n' "${lines[@]}")"
+[[ ${lines[5]} == "plugin:false:--yes linked.widget" || ${lines[5]} == "plugin::--yes linked.widget" ]] ||
+  fail "launcher remove detects an executable inside a symlinked plugin" "${lines[5]}"
+pass "launcher remove detects executables inside symlinked plugins"
+
+(( ${#lines[@]} == 6 )) || fail "plain user desktop removal emits no extra actions" "$(printf '%s\n' "${lines[@]}")"
 pass "plain user desktop removal emits no extra actions"
 
 [[ ! -e $tmp_dir/data/applications/omamail.desktop ]] ||
-  fail "launcher remove deletes a plugin desktop file matched by id"
+  fail "launcher remove deletes a plugin desktop file matched by quoted executable"
 [[ ! -e $tmp_dir/data/applications/mail-handler.desktop ]] ||
   fail "launcher remove deletes a plugin desktop file matched by executable"
 pass "launcher remove deletes plugin desktop files after removing the plugin"
 
 [[ ! -e $tmp_dir/data/applications/borrowed-icon.desktop ]] ||
   fail "Icon-only plugin references remain ordinary user desktop files"
-(( $(grep -c '^plugin:' "$TEST_LOG" || true) == 2 )) ||
+(( $(grep -c '^plugin:' "$TEST_LOG" || true) == 3 )) ||
   fail "Icon= under a plugin tree never implies plugin ownership"
 pass "Icon-only references cannot remove a plugin"
+
+[[ ! -e $tmp_dir/data/applications/notes.desktop && ! -e $tmp_dir/data/applications/editor.desktop ]] ||
+  fail "a desktop id, Path= or desktop action matching a plugin removes only the desktop file"
+pass "a desktop id, Path= or desktop action cannot remove a plugin"
