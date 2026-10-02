@@ -39,15 +39,22 @@ const enterMatch = traySource.match(/function enterSubmenu\(entry, title\) \{([\
 assert(enterMatch && /Qt\.callLater/.test(enterMatch[1]), 'enterSubmenu defers model mutation')
 assert(/submenuTransitionCurrent\(generation, root\.trayMenuGeneration, root\.trayMenuOpen\)/.test(enterMatch[1]), 'enterSubmenu owns a menu generation')
 assert(/opener\.destroy\(\)/.test(enterMatch[1]), 'stale unpublished enter opener is destroyed')
-const beforeDefer = body => body.replace(/\/\/.*$/gm, '').split('Qt.callLater')[0]
-const publishesLater = /Qt\.callLater\(function\(\) \{[\s\S]*root\.submenuStack = stack/
-assert(!/submenuStack\s*=[^=]/.test(beforeDefer(enterMatch[1])), 'enterSubmenu does not swap the stack inside the click')
-assert(publishesLater.test(enterMatch[1]), 'enterSubmenu publishes the stack from the deferred callback')
+// Split a function into what runs inside the click and its one deferred callback
+const deferral = body => {
+  const code = body.replace(/\/\/.*$/gm, '')
+  const parts = code.match(/^([\s\S]*?)Qt\.callLater\(function\(\) \{([\s\S]*?)\n    \}\)([\s\S]*)$/)
+  if (!parts || code.split('Qt.callLater').length !== 2) return { click: code, deferred: '' }
+  return { click: parts[1] + parts[3], deferred: parts[2] }
+}
+const enter = deferral(enterMatch[1])
+assert(!/submenuStack\s*=[^=]/.test(enter.click), 'enterSubmenu does not swap the stack inside the click')
+assert(/root\.submenuStack = stack/.test(enter.deferred), 'enterSubmenu publishes the stack from the deferred callback')
 
 const leaveMatch = traySource.match(/function leaveSubmenu\(\) \{([\s\S]*?)\n  \}/)
 assert(leaveMatch && /Qt\.callLater/.test(leaveMatch[1]), 'leaveSubmenu defers model mutation')
-assert(!/submenuStack\s*=[^=]|\.destroy\(\)/.test(beforeDefer(leaveMatch[1])), 'leaveSubmenu does not swap the stack or destroy the opener inside the click')
-assert(publishesLater.test(leaveMatch[1]), 'leaveSubmenu publishes the stack from the deferred callback')
+const leave = deferral(leaveMatch[1])
+assert(!/submenuStack\s*=[^=]|\.destroy\(\)/.test(leave.click), 'leaveSubmenu does not swap the stack or destroy the opener inside the click')
+assert(/root\.submenuStack = stack/.test(leave.deferred), 'leaveSubmenu publishes the stack from the deferred callback')
 assert(/submenuTransitionCurrent\(generation, root\.trayMenuGeneration, root\.trayMenuOpen\)/.test(leaveMatch[1]), 'leaveSubmenu owns a menu generation')
 
 const resetMatch = traySource.match(/function resetTrayMenu\(\) \{([\s\S]*?)\n  \}/)
