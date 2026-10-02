@@ -223,15 +223,11 @@ Item {
     if (!row) return
     root.opened = false
     if (row.entryType === "image") {
-      var fileArgs = [root.omarchyPath + "/bin/omarchy-clipboard-paste-file"]
-      if (!root.targetWindow) fileArgs.push("--copy-only")
-      fileArgs.push(row.mime, row.path)
+      var fileArgs = [root.omarchyPath + "/bin/omarchy-clipboard-paste-file", row.mime, row.path]
       if (root.targetWindow) fileArgs.push(root.targetWindow)
       Quickshell.execDetached(fileArgs)
     } else if (row.fullText) {
-      var textArgs = [root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--shift-insert"]
-      if (!root.targetWindow) textArgs.push("--copy-only")
-      textArgs.push("--history-index", String(row.historyIndex))
+      var textArgs = [root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--shift-insert", "--history-index", String(row.historyIndex)]
       if (root.targetWindow) textArgs.push(root.targetWindow)
       Quickshell.execDetached(textArgs)
     }

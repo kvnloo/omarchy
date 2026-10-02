@@ -208,15 +208,11 @@ assertEqual(
 assertEqual(
   clipboard.originAddress(null, { id: 2 }),
   '',
-  'clipboard keeps an empty workspace copy-only instead of inventing an origin'
+  'clipboard invents no origin on an empty workspace'
 )
 assert(
-  /if \(!root\.targetWindow\) fileArgs\.push\("--copy-only"\)/.test(clipboardQml),
-  'clipboard image selection is copy-only when there is no eligible origin'
-)
-assert(
-  /if \(!root\.targetWindow\) textArgs\.push\("--copy-only"\)/.test(clipboardQml),
-  'clipboard text selection is copy-only when there is no eligible origin'
+  !/--copy-only/.test(clipboardQml.match(/function applySelected\(row\) \{[\s\S]*?\n  \}\n/)[0]),
+  'clipboard selection still pastes into the focused window when there is no eligible origin'
 )
 assert(
   /var textArgs = \[root\.omarchyPath \+ "\/bin\/omarchy-clipboard-paste-text"[\s\S]*if \(root\.targetWindow\) textArgs\.push\(root\.targetWindow\)/.test(clipboardQml),
