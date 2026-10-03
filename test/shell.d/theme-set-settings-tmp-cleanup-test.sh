@@ -42,7 +42,7 @@ write_invalid_settings "$test_home/.claude/settings.json"
 sha_before=$(sha256sum "$test_home/.claude/settings.json" | cut -d' ' -f1)
 
 status=0
-HOME="$test_home" bash "$ROOT/bin/omarchy-theme-set-claude" --activate 2>"$test_tmp/stderr" || status=$?
+HOME="$test_home" CLAUDE_CONFIG_DIR="$test_home/.claude" bash "$ROOT/bin/omarchy-theme-set-claude" --activate 2>"$test_tmp/stderr" || status=$?
 
 (( status != 0 )) || fail "claude refuses to activate on a settings.json jq cannot parse"
 (( $(litter_count "$test_home/.claude/settings.json") == 0 )) || fail "claude leaves no settings.json.XXXXXX litter when jq fails"
@@ -54,7 +54,7 @@ pass "claude activate leaves no tmp litter and keeps settings.json on jq failure
 setup_claude "$test_home"
 echo '{"theme": "dark"}' >"$test_home/.claude/settings.json"
 
-HOME="$test_home" bash "$ROOT/bin/omarchy-theme-set-claude" --activate || fail "claude activate succeeds on a valid settings.json"
+HOME="$test_home" CLAUDE_CONFIG_DIR="$test_home/.claude" bash "$ROOT/bin/omarchy-theme-set-claude" --activate || fail "claude activate succeeds on a valid settings.json"
 [[ $(jq -r '.theme' "$test_home/.claude/settings.json") == "custom:omarchy" ]] || fail "claude writes custom:omarchy into settings.json"
 (( $(litter_count "$test_home/.claude/settings.json") == 0 )) || fail "claude leaves no tmp litter on the happy path"
 pass "claude activate writes the theme on a valid settings.json"
