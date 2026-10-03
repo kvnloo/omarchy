@@ -47,6 +47,11 @@ end
 -- keycode. This keeps non-Latin secondary groups working without assuming the
 -- primary layout is QWERTY (Dvorak/AZERTY included).
 local function resolve_primary_keycode(key)
+  -- A keymap file overrides the kb_* rules, so they cannot say where the letter is.
+  if tostring(hl.get_config("input.kb_file") or "") ~= "" then
+    return key
+  end
+
   local config = {
     layout = tostring(hl.get_config("input.kb_layout") or "us"),
     variant = tostring(hl.get_config("input.kb_variant") or ""),
@@ -74,7 +79,7 @@ local function resolve_primary_keycode(key)
   add_xkb_option(command, "options", config.options)
   add_xkb_option(command, "rules", config.rules)
   table.insert(command, "--keysym")
-  table.insert(command, o.shell_quote(key))
+  table.insert(command, o.shell_quote(key:lower()))
 
   local pipe = io.popen(table.concat(command, " ") .. " 2>/dev/null")
   if not pipe then
@@ -85,11 +90,11 @@ local function resolve_primary_keycode(key)
   local output = pipe:read("*a") or ""
   pipe:close()
 
-  -- xkbcli numbers layouts from 1 in its human-readable output. Select the
-  -- primary configured layout even if another group is currently active.
+  -- xkbcli numbers layouts and levels from 1. Take the unshifted letter on the
+  -- primary layout even if another group is currently active.
   for line in output:gmatch("[^\r\n]+") do
-    local keycode, layout_index = line:match("^%s*(%d+)%s+%S+%s+(%d+)%s")
-    if layout_index == "1" then
+    local keycode, layout_index, level = line:match("^%s*(%d+)%s+%S+%s+(%d+)%s.-%s(%d+)%s+%[")
+    if layout_index == "1" and level == "1" then
       local resolved = "code:" .. keycode
       keycode_cache[cache_key] = resolved
       return resolved

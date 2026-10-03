@@ -99,8 +99,9 @@ LUA
 run_clipboard_shortcuts() {
   local layout="$1"
   local variant="$2"
+  local file="${3:-}"
 
-  TEST_KB_LAYOUT="$layout" TEST_KB_VARIANT="$variant" OMARCHY_PATH="$ROOT" lua <<'LUA'
+  TEST_KB_LAYOUT="$layout" TEST_KB_VARIANT="$variant" TEST_KB_FILE="$file" OMARCHY_PATH="$ROOT" lua <<'LUA'
 package.path = os.getenv("OMARCHY_PATH") .. "/?.lua;" .. package.path
 
 local bindings = {}
@@ -112,6 +113,7 @@ local config = {
   ["input.kb_model"] = "",
   ["input.kb_options"] = "",
   ["input.kb_rules"] = "",
+  ["input.kb_file"] = os.getenv("TEST_KB_FILE"),
 }
 
 hl = {
@@ -216,6 +218,16 @@ azerty_clipboard_output=$(run_clipboard_shortcuts "fr,ru" ",")
 grep -Fqx $'gui-select-all\tCTRL\tcode:24\tdown' <<<"$azerty_clipboard_output" ||
   fail "select-all resolves A from primary French AZERTY instead of the QWERTY A position" "$azerty_clipboard_output"
 pass "select-all preserves logical A on primary AZERTY"
+
+third_level_clipboard_output=$(run_clipboard_shortcuts "us" "3l")
+grep -Fqx $'gui-select-all\tCTRL\tcode:41\tdown' <<<"$third_level_clipboard_output" ||
+  fail "select-all resolves the unshifted A, not a letter on a higher level" "$third_level_clipboard_output"
+pass "select-all resolves the unshifted letter"
+
+kb_file_clipboard_output=$(run_clipboard_shortcuts "us" "" "$tmpdir/custom.xkb")
+grep -Fqx $'gui-paste\tCTRL\tV\tdown' <<<"$kb_file_clipboard_output" ||
+  fail "universal paste keeps the named key when a keymap file replaces the kb_* rules" "$kb_file_clipboard_output"
+pass "universal clipboard shortcuts keep named keys under a keymap file"
 
 grep -F 'timeout = 50, type = "oneshot"' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
   fail "clipboard key resolution change removed the existing key-up timer"
