@@ -142,6 +142,14 @@ done
   fail "first updater did not reach the blocked mutation phase"
 }
 
+# The first updater has already merged, so the second would report "up to date"
+# even unserialized; only the held lock shows the session is owned.
+if flock -n "$OMARCHY_PLUGIN_UPDATE_LOCK" true; then
+  touch "$VALIDATE_RELEASE"
+  wait "$first_pid" || true
+  fail "first updater does not hold the update lock while mutating"
+fi
+
 BLOCK_VALIDATE=0 run_update >"$test_dir/second-out" 2>&1 &
 second_pid=$!
 sleep 0.2
