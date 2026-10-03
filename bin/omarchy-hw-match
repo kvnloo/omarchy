@@ -8,7 +8,7 @@
 if [[ -z ${1:-} ]]; then
   echo "Usage: omarchy-hw-match <pattern>" >&2
   exit 1
+else
+  grep -qi -- "$1" /sys/class/dmi/id/product_name 2>/dev/null ||
+  grep -qi -- "$1" /sys/class/dmi/id/product_family 2>/dev/null
 fi
-
-grep -qi -- "$1" /sys/class/dmi/id/product_name 2>/dev/null ||
-grep -qi -- "$1" /sys/class/dmi/id/product_family 2>/dev/null
