@@ -11,7 +11,8 @@ prepare_sleep() {
 
   while IFS= read -r line; do
     if [[ $line == *"boolean true"* ]]; then
-      "$layout_helper" save >/dev/null 2>&1 || true
+      # Hyprland IPC can stall on lid transitions; never let it eat the lock's budget.
+      timeout --kill-after=0.1s 0.4s "$layout_helper" save >/dev/null 2>&1 || true
       "$sleep_lock"
       return $?
     fi
