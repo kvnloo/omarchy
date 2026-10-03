@@ -110,3 +110,16 @@ printf '   boolean false\n' |   OMARCHY_PATH="$mock_omarchy" LAYOUT_LOG="$layout
 [[ $(<"$layout_log") == restore ]] || fail "resume consumer restores layout"
 [[ $(<"$wake_log") == "--skip-keyboard" ]] || fail "resume consumer skips duplicate keyboard restore"
 pass "prepare and resume consumers preserve their individual edge behavior"
+
+# A stalled resume helper must not keep the monitor from re-arming the inhibitor.
+cat >"$mock_omarchy/bin/omarchy-system-wake" <<'SH'
+#!/bin/bash
+exec sleep 30
+SH
+start_us=${EPOCHREALTIME//[!0-9]/}
+printf '   boolean false\n' | OMARCHY_PATH="$mock_omarchy" LAYOUT_LOG="$layout_log" \
+  "$sleep_monitor" --consume-resume
+elapsed_us=$((10#${EPOCHREALTIME//[!0-9]/} - 10#$start_us))
+(( elapsed_us < 10000000 )) ||
+  fail "resume consumer bounds a stalled wake helper" "elapsed: ${elapsed_us}us"
+pass "resume consumer bounds a stalled wake helper"

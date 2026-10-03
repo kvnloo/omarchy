@@ -26,10 +26,12 @@ resume_sleep() {
 
   while IFS= read -r line; do
     if [[ $line == *"boolean false"* ]]; then
-      "$layout_helper" restore >/dev/null 2>&1 || true
+      # Nothing re-arms the inhibitor until this returns, so a stall here
+      # would leave the next suspend unlocked.
+      timeout --kill-after=0.1s 2s "$layout_helper" restore >/dev/null 2>&1 || true
       # The system-sleep hook owns keyboard brightness for this sleep cycle.
       # Do not consume the separate lock/idle brightness receipt here.
-      "$wake_helper" --skip-keyboard >/dev/null 2>&1 || true
+      timeout --kill-after=0.1s 5s "$wake_helper" --skip-keyboard >/dev/null 2>&1 || true
       return 0
     fi
   done
