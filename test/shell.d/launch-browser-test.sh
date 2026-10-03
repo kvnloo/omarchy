@@ -13,6 +13,8 @@ mkdir -p "$mock_bin" "$test_home/.local/share/applications"
 # Keep the launcher away from the running browser's singleton socket, which it
 # would otherwise hand these test URLs to.
 export XDG_CONFIG_HOME="$test_home/.config" XDG_DATA_HOME="$test_home/.local/share"
+# A system mimeapps.list would hand the resolver a default before the mocks are asked.
+export XDG_CONFIG_DIRS="$test_tmp/xdg"
 
 cat >"$test_home/.local/share/applications/chromium.desktop" <<'EOF'
 [Desktop Entry]
