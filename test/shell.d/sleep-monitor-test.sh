@@ -15,6 +15,7 @@ layout_log="$tmpdir/layout-log"
 wake_log="$tmpdir/wake-log"
 resume_ready="$tmpdir/resume-ready"
 prepare_seen="$tmpdir/prepare-seen"
+producer_pids="$tmpdir/producer-pids"
 mkdir -p "$mock_bin" "$mock_omarchy/bin"
 
 cat >"$mock_bin/systemd-inhibit" <<'SH'
@@ -25,6 +26,7 @@ SH
 
 cat >"$mock_bin/dbus-monitor" <<'SH'
 #!/bin/bash
+echo "$$" >>"$PRODUCER_PIDS"
 case "${OMARCHY_SLEEP_EVENT_ROLE:-}" in
   resume)
     # Subscription exists before the inhibited listener. Queue the prepare edge,
@@ -71,7 +73,16 @@ SH
 chmod +x "$mock_bin/systemd-inhibit" "$mock_bin/dbus-monitor"   "$mock_omarchy/bin/omarchy-system-sleep-lock"   "$mock_omarchy/bin/omarchy-hyprland-keyboard-layout"   "$mock_omarchy/bin/omarchy-system-wake"
 ln -s "$sleep_monitor" "$mock_omarchy/bin/omarchy-system-sleep-monitor"
 
-OMARCHY_PATH="$mock_omarchy" PATH="$mock_bin:$PATH"   LOCK_LOG="$lock_log" LAYOUT_LOG="$layout_log" WAKE_LOG="$wake_log"   RESUME_READY="$resume_ready" PREPARE_SEEN="$prepare_seen"   "$sleep_monitor"
+OMARCHY_PATH="$mock_omarchy" PATH="$mock_bin:$PATH"   LOCK_LOG="$lock_log" LAYOUT_LOG="$layout_log" WAKE_LOG="$wake_log"   RESUME_READY="$resume_ready" PREPARE_SEEN="$prepare_seen" PRODUCER_PIDS="$producer_pids"   "$sleep_monitor"
+
+# Neither subscription may outlive the cycle under the user systemd instance.
+while read -r producer_pid; do
+  if kill -0 "$producer_pid" 2>/dev/null; then
+    kill "$producer_pid" 2>/dev/null || true
+    fail "sleep monitor reaps its event producers" "producer still running: $producer_pid"
+  fi
+done <"$producer_pids"
+pass "sleep monitor reaps its event producers"
 
 [[ $(<"$lock_log") == "locked" ]] ||
   fail "full sleep cycle invokes the lock helper"

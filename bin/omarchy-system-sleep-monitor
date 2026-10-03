@@ -37,7 +37,8 @@ resume_sleep() {
 
 start_event_monitor() {
   local role="$1"
-  OMARCHY_SLEEP_EVENT_ROLE="$role" dbus-monitor --system     "type='signal',sender='org.freedesktop.login1',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'"
+  # exec, so the coproc PID the cleanup kills is dbus-monitor itself.
+  OMARCHY_SLEEP_EVENT_ROLE="$role" exec dbus-monitor --system    "type='signal',sender='org.freedesktop.login1',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'"
 }
 
 monitor_prepare_inhibited() {
