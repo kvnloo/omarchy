@@ -52,10 +52,11 @@ grep -q "unknown option: --widht" "$err" || fail "menu-select names the bad flag
 [[ ! -e $test_tmp/shell-called ]] || fail "menu-select rejects --widht before the summon"
 
 # 3. menu-select rejects an unknown flag mixed with valid ones
-result=$(run omarchy-menu-select "Pick" -- --width 400 --bogus)
+result=$(run omarchy-menu-select "Pick" a b -- --width 400 --bogus)
 code="${result%%|*}"
 err="${result#*|}"
 [[ $code == "1" ]] || fail "menu-select rejects --bogus (exit $code)" "$(cat "$err")"
+grep -q "unknown option: --bogus" "$err" || fail "menu-select names the bad flag among valid ones" "$(cat "$err")"
 [[ ! -e $test_tmp/shell-called ]] || fail "menu-select rejects --bogus before the summon"
 
 # 4. menu-input still accepts --width and forwards it (reaches the summon)
