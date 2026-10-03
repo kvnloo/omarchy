@@ -13,10 +13,14 @@ prepare_sleep() {
     if [[ $line == *"boolean true"* ]]; then
       # Hyprland IPC can stall on lid transitions; never let it eat the lock's budget.
       timeout --kill-after=0.1s 0.4s "$layout_helper" save >/dev/null 2>&1 || true
-      "$sleep_lock"
-      return $?
+      # logind suspends whether or not the lock succeeded, so the resume edge is still coming.
+      "$sleep_lock" || true
+      return 0
     fi
   done
+
+  # The producer ended without a prepare edge, so no sleep is coming to resume from.
+  return 1
 }
 
 resume_sleep() {
@@ -82,9 +86,13 @@ monitor_one_sleep_cycle() {
   systemd-inhibit     --what=sleep     --mode=delay     --who=Omarchy     --why="Lock screen before suspend"     "$OMARCHY_PATH/bin/omarchy-system-sleep-monitor" --inhibited
   prepare_status=$?
 
-  # The inhibitor has been released. The process and its pre-existing D-Bus
-  # subscription survive suspend and consume the resume edge afterwards.
-  resume_sleep <&"$resume_fd"
+  # Waiting for resume after a failed prepare would leave the next suspend with
+  # no inhibitor and no lock, so restart and re-arm instead.
+  if (( prepare_status == 0 )); then
+    # The inhibitor has been released. The process and its pre-existing D-Bus
+    # subscription survive suspend and consume the resume edge afterwards.
+    resume_sleep <&"$resume_fd"
+  fi
   cleanup_resume_monitor
   trap - EXIT
 

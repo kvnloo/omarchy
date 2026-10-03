@@ -29,16 +29,20 @@ cat >"$mock_bin/dbus-monitor" <<'SH'
 echo "$$" >>"$PRODUCER_PIDS"
 case "${OMARCHY_SLEEP_EVENT_ROLE:-}" in
   resume)
-    # Subscription exists before the inhibited listener. Queue the prepare edge,
-    # then keep this exact producer alive until the lock path has handled it.
-    touch "$RESUME_READY"
-    printf '   boolean true\n'
-    for _ in {1..200}; do
-      [[ -e $PREPARE_SEEN ]] && break
-      sleep 0.01
-    done
-    printf '   boolean false\n'
-    exec sleep 30
+    if [[ -n ${RESUME_SILENT:-} ]]; then
+      exec sleep 30
+    else
+      # Subscription exists before the inhibited listener. Queue the prepare edge,
+      # then keep this exact producer alive until the lock path has handled it.
+      touch "$RESUME_READY"
+      printf '   boolean true\n'
+      for _ in {1..200}; do
+        [[ -e $PREPARE_SEEN ]] && break
+        sleep 0.01
+      done
+      printf '   boolean false\n'
+      exec sleep 30
+    fi
     ;;
   prepare)
     for _ in {1..200}; do
@@ -123,3 +127,79 @@ elapsed_us=$((10#${EPOCHREALTIME//[!0-9]/} - 10#$start_us))
 (( elapsed_us < 10000000 )) ||
   fail "resume consumer bounds a stalled wake helper" "elapsed: ${elapsed_us}us"
 pass "resume consumer bounds a stalled wake helper"
+
+# An inhibitor that never starts its listener means no sleep is coming, so the
+# monitor must exit and re-arm rather than wait for a resume edge without a lock.
+inhibit_ran="$tmpdir/inhibit-ran"
+cat >"$mock_bin/systemd-inhibit" <<'SH'
+#!/bin/bash
+touch "$INHIBIT_RAN"
+for _ in {1..200}; do
+  [[ -s $PRODUCER_PIDS ]] && break
+  sleep 0.01
+done
+exit 1
+SH
+: >"$producer_pids"
+start_us=${EPOCHREALTIME//[!0-9]/}
+status=0
+OMARCHY_PATH="$mock_omarchy" PATH="$mock_bin:$PATH" RESUME_SILENT=1 PRODUCER_PIDS="$producer_pids" INHIBIT_RAN="$inhibit_ran" \
+  timeout 20s "$sleep_monitor" || status=$?
+elapsed_us=$((10#${EPOCHREALTIME//[!0-9]/} - 10#$start_us))
+[[ -e $inhibit_ran && -s $producer_pids ]] ||
+  fail "failed inhibitor start exercises the inhibitor with a live resume producer"
+(( status == 1 )) || fail "failed inhibitor start is reported to systemd" "status: $status"
+(( elapsed_us < 10000000 )) ||
+  fail "monitor re-arms when the inhibitor fails to start" "elapsed: ${elapsed_us}us"
+while read -r producer_pid; do
+  if kill -0 "$producer_pid" 2>/dev/null; then
+    kill "$producer_pid" 2>/dev/null || true
+    fail "failed inhibitor start reaps the resume producer" "producer still running: $producer_pid"
+  fi
+done <"$producer_pids"
+pass "monitor re-arms when the inhibitor fails to start"
+
+# The prepare producer ending without an edge is the same: nothing is sleeping.
+status=0
+: | OMARCHY_PATH="$mock_omarchy" LAYOUT_LOG="$layout_log" "$sleep_monitor" --consume-prepare || status=$?
+(( status != 0 )) || fail "prepare consumer reports a producer that ended without a prepare edge"
+pass "prepare consumer reports a producer that ended without a prepare edge"
+
+# A lock that fails does not stop the suspend, so the cycle must still be resumed.
+cat >"$mock_bin/systemd-inhibit" <<'SH'
+#!/bin/bash
+while [[ $1 == --* ]]; do shift; done
+exec "$@"
+SH
+cat >"$mock_omarchy/bin/omarchy-system-sleep-lock" <<'SH'
+#!/bin/bash
+echo failed >>"$LOCK_LOG"
+touch "$PREPARE_SEEN"
+exit 1
+SH
+cat >"$mock_omarchy/bin/omarchy-system-wake" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >>"$WAKE_LOG"
+SH
+rm -f "$resume_ready" "$prepare_seen"
+: >"$lock_log"
+: >"$layout_log"
+: >"$wake_log"
+: >"$producer_pids"
+OMARCHY_PATH="$mock_omarchy" PATH="$mock_bin:$PATH" \
+  LOCK_LOG="$lock_log" LAYOUT_LOG="$layout_log" WAKE_LOG="$wake_log" \
+  RESUME_READY="$resume_ready" PREPARE_SEEN="$prepare_seen" PRODUCER_PIDS="$producer_pids" \
+  timeout 20s "$sleep_monitor" || fail "a failed lock after a prepare edge completes the cycle"
+[[ $(<"$lock_log") == "failed" ]] || fail "failed lock cycle runs the lock helper" "$(cat "$lock_log")"
+mapfile -t layout_calls <"$layout_log"
+[[ ${layout_calls[0]:-} == "save" && ${layout_calls[1]:-} == "restore" ]] && (( ${#layout_calls[@]} == 2 )) ||
+  fail "a failed lock after a prepare edge still restores on resume" "$(cat "$layout_log")"
+[[ $(<"$wake_log") == "--skip-keyboard" ]] ||
+  fail "a failed lock after a prepare edge still wakes on resume" "$(cat "$wake_log")"
+while read -r producer_pid; do
+  if kill -0 "$producer_pid" 2>/dev/null; then
+    kill "$producer_pid" 2>/dev/null || true
+    fail "failed lock cycle reaps its event producers" "producer still running: $producer_pid"
+  fi
+done <"$producer_pids"
+pass "a failed lock after a prepare edge still resumes the cycle"
