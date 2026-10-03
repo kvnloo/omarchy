@@ -118,7 +118,7 @@ for mode in window private url; do
     OMARCHY_TEST_BROWSER_LAUNCH="$launch_log" OMARCHY_TEST_BROWSER_FOCUS="$focus_log" \
     bash "$ROOT/bin/omarchy-launch-browser" "${args[@]}" 2>"$error_log" || status=$?
   (( status == 1 )) || fail "browser launcher rejects missing default for $mode with exit 1"
-  grep -F "Choose one with 'omarchy default browser'." "$error_log" >/dev/null ||
+  grep -F "Set one with 'omarchy default browser <browser>'." "$error_log" >/dev/null ||
     fail "browser launcher explains how to configure the missing default for $mode"
   [[ ! -e $handoff_log ]] || fail "browser launcher attempts no handoff with no default for $mode"
   [[ ! -e $launch_log ]] || fail "browser launcher spawns nothing with no default for $mode"
