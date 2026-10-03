@@ -124,6 +124,9 @@ hl = {
     send_key_state = function(spec)
       return spec
     end,
+    global = function(name)
+      return { global = name }
+    end,
   },
   bind = function(keys, dispatcher)
     bindings[keys] = dispatcher
