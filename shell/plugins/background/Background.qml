@@ -336,7 +336,10 @@ Item {
       BackgroundMedia {
         id: base
         anchors.fill: parent
+        // Same durable path, new pixels: stock themes share background file
+        // names, so the base frame must cache-bust. version 0 stays cached.
         path: root.displayedBackground
+        version: root.backgroundVersion
         constrainDecode: true
         decodeSize: panel.decodeSize(root.displayedBackground)
         onReadyChanged: {
