@@ -428,12 +428,12 @@ Panel {
     return Model.outputVolumeName(volume, muted)
   }
 
-  function queueOutputVolumeWrite(sinkName, volume) {
+  function queueOutputVolumeWrite(sinkName, percents) {
     if (!sinkName) return
     outputVolumeWriteState = Model.queueVolumeWrite(
       outputVolumeWriteState,
       sinkName,
-      Math.round(volume * 100)
+      percents
     )
     if (!outputVolumeWriteProc.running) outputVolumeWriteTimer.restart()
   }
@@ -446,7 +446,9 @@ Panel {
     if (!next.running) return
 
     outputVolumeWriteProc.sinkName = next.activeSink
-    outputVolumeWriteProc.percent = next.activePercent
+    outputVolumeWriteProc.percents = next.activePercents && next.activePercents.length
+      ? next.activePercents.slice()
+      : [next.activePercent]
     outputVolumeWriteProc.running = true
   }
 
@@ -457,10 +459,18 @@ Panel {
     // Keep the panel responsive immediately. For device-routed sinks where
     // Quickshell drops this PwNodeAudio write, the serialized pactl path below
     // is the authoritative fallback.
+    //
+    // QS scales channels proportionally on the volume setter. Read the scaled
+    // per-channel volumes afterward and pass one pactl VOLUME per channel —
+    // a single N% would flatten 40/80 balance to N/N (e.g. 55/55).
     volumeSink.audio.volume = volume
 
+    var volumes = volumeSink.audio.volumes
+    var percents = volumes && volumes.length
+      ? Model.channelPercentsFromVolumes(volumes)
+      : Model.channelPercentsFromVolumes(Model.scaleChannelVolumes([], volume))
     var name = volumeSinkName || (volumeSink.name ? String(volumeSink.name) : "")
-    root.queueOutputVolumeWrite(name, volume)
+    root.queueOutputVolumeWrite(name, percents)
     return volume
   }
 
@@ -638,9 +648,15 @@ Panel {
   Process {
     id: outputVolumeWriteProc
     property string sinkName: ""
-    property int percent: 0
+    property var percents: []
 
-    command: ["pactl", "set-sink-volume", sinkName, String(percent) + "%"]
+    // One VOLUME arg per channel preserves left/right balance.
+    command: {
+      var args = ["pactl", "set-sink-volume", sinkName]
+      var list = percents && percents.length ? percents : [0]
+      for (var i = 0; i < list.length; i++) args.push(String(list[i]) + "%")
+      return args
+    }
 
     onExited: {
       root.outputVolumeWriteState = Model.finishVolumeWrite(root.outputVolumeWriteState)

@@ -99,13 +99,21 @@ let balanced = audio.newVolumeWriteState()
 balanced = audio.queueVolumeWrite(balanced, 'bluez_output.speaker', percents)
 balanced = audio.beginVolumeWrite(balanced)
 assertDeepEqual(balanced.activePercents, [28, 55], 'volume queue carries per-channel percents')
-assertEqual(balanced.activePercent, undefined, 'single activePercent is not used for multi-channel writes')
+assertEqual(balanced.activePercent, 28, 'activePercent mirrors the first channel for compat')
 
 const fs = require('fs')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/audio/Panel.qml', 'utf8')
 assert(
-  /Process \{[\s\S]*id: outputVolumeWriteProc[\s\S]*command: \["pactl", "set-sink-volume"/.test(panelSource),
+  /Process \{[\s\S]*id: outputVolumeWriteProc[\s\S]*pactl[\s\S]*set-sink-volume/.test(panelSource),
   'audio panel uses one reusable pactl process for output volume writes'
+)
+assert(
+  /channelPercentsFromVolumes\(volumes\)/.test(panelSource),
+  'audio panel writes per-channel percents from audio.volumes after the QS scale'
+)
+assert(
+  /for \(var i = 0; i < list\.length; i\+\+\) args\.push/.test(panelSource),
+  'audio panel passes one pactl VOLUME arg per channel'
 )
 assert(
   /onExited:[\s\S]*finishVolumeWrite[\s\S]*flushOutputVolumeWrite/.test(panelSource),

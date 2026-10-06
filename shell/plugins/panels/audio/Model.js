@@ -233,47 +233,104 @@ function streamRepresentsPlayer(node, player, players, streams) {
   return streamRepresentsMprisPlayer(streamLabel(node, players, streams), playerLabel)
 }
 
+// Scale each channel so the max channel equals newVolume, preserving balance.
+// Quickshell's audio.volume setter scales proportionally the same way; pactl
+// set-sink-volume SINK N% alone would flatten every channel to N%.
+function scaleChannelVolumes(volumes, newVolume) {
+  var target = Math.max(0, Math.min(1, Number(newVolume) || 0))
+  var channels = Array.isArray(volumes) ? volumes : []
+  if (channels.length === 0) return [target]
+
+  var max = 0
+  for (var i = 0; i < channels.length; i++) {
+    var v = Number(channels[i]) || 0
+    if (v > max) max = v
+  }
+
+  if (max <= 0) {
+    var filled = []
+    for (var j = 0; j < channels.length; j++) filled.push(target)
+    return filled
+  }
+
+  var scale = target / max
+  var out = []
+  for (var k = 0; k < channels.length; k++) {
+    out.push(Math.max(0, Math.min(1, (Number(channels[k]) || 0) * scale)))
+  }
+  return out
+}
+
+function channelPercentsFromVolumes(volumes) {
+  var channels = Array.isArray(volumes) ? volumes : []
+  var percents = []
+  for (var i = 0; i < channels.length; i++) {
+    percents.push(Math.max(0, Math.min(100, Math.round((Number(channels[i]) || 0) * 100))))
+  }
+  return percents.length > 0 ? percents : [0]
+}
+
+function normalizePercents(percentOrPercents) {
+  if (Array.isArray(percentOrPercents)) {
+    var list = []
+    for (var i = 0; i < percentOrPercents.length; i++) {
+      list.push(Math.max(0, Math.min(100, Math.round(Number(percentOrPercents[i]) || 0))))
+    }
+    return list.length > 0 ? list : [0]
+  }
+  return [Math.max(0, Math.min(100, Math.round(Number(percentOrPercents) || 0)))]
+}
+
 function newVolumeWriteState() {
   return {
     running: false,
     activeSink: "",
     activePercent: -1,
+    activePercents: [],
     pendingSink: "",
-    pendingPercent: -1
+    pendingPercent: -1,
+    pendingPercents: []
   }
 }
 
-function queueVolumeWrite(state, sink, percent) {
+function queueVolumeWrite(state, sink, percentOrPercents) {
   var current = state || newVolumeWriteState()
   var target = String(sink || "")
-  var value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)))
+  var percents = target ? normalizePercents(percentOrPercents) : []
   return {
     running: current.running === true,
     activeSink: String(current.activeSink || ""),
     activePercent: Number(current.activePercent),
+    activePercents: Array.isArray(current.activePercents) ? current.activePercents.slice() : [],
     pendingSink: target,
-    pendingPercent: target ? value : -1
+    pendingPercent: percents.length === 1 ? percents[0] : (percents.length > 0 ? percents[0] : -1),
+    pendingPercents: percents
   }
 }
 
 function beginVolumeWrite(state) {
   var current = state || newVolumeWriteState()
-  if (current.running || !current.pendingSink || current.pendingPercent < 0) {
+  var pending = Array.isArray(current.pendingPercents) ? current.pendingPercents : []
+  if (current.running || !current.pendingSink || pending.length === 0) {
     return {
       running: current.running === true,
       activeSink: String(current.activeSink || ""),
       activePercent: Number(current.activePercent),
+      activePercents: Array.isArray(current.activePercents) ? current.activePercents.slice() : [],
       pendingSink: String(current.pendingSink || ""),
-      pendingPercent: Number(current.pendingPercent)
+      pendingPercent: Number(current.pendingPercent),
+      pendingPercents: pending.slice()
     }
   }
 
   return {
     running: true,
     activeSink: String(current.pendingSink),
-    activePercent: Number(current.pendingPercent),
+    activePercent: pending.length === 1 ? pending[0] : pending[0],
+    activePercents: pending.slice(),
     pendingSink: "",
-    pendingPercent: -1
+    pendingPercent: -1,
+    pendingPercents: []
   }
 }
 
@@ -283,8 +340,10 @@ function finishVolumeWrite(state) {
     running: false,
     activeSink: "",
     activePercent: -1,
+    activePercents: [],
     pendingSink: String(current.pendingSink || ""),
-    pendingPercent: Number(current.pendingPercent)
+    pendingPercent: Number(current.pendingPercent),
+    pendingPercents: Array.isArray(current.pendingPercents) ? current.pendingPercents.slice() : []
   }
 }
 
@@ -313,6 +372,8 @@ if (typeof module !== "undefined") {
     unmatchedMprisStreamLabel: unmatchedMprisStreamLabel,
     streamLabel: streamLabel,
     streamRepresentsPlayer: streamRepresentsPlayer,
+    scaleChannelVolumes: scaleChannelVolumes,
+    channelPercentsFromVolumes: channelPercentsFromVolumes,
     newVolumeWriteState: newVolumeWriteState,
     queueVolumeWrite: queueVolumeWrite,
     beginVolumeWrite: beginVolumeWrite,
