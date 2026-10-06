@@ -127,7 +127,7 @@ BarWidget {
     resetTrayMenu()
     activeTrayItem = item
     activeTrayAnchor = anchorItem
-    trayMenuOpen = trayMenuOpener.children.length > 0
+    trayMenuOpen = trayMenuOpener.children.values.length > 0
   }
 
   function trayIconSource(icon) {
@@ -516,9 +516,9 @@ BarWidget {
     id: trayMenuOpener
     menu: root.activeTrayItem ? root.activeTrayItem.menu : null
     onChildrenChanged: {
-      if (root.activeTrayItem && children.length > 0 && !root.trayMenuOpen)
+      if (root.activeTrayItem && children.values.length > 0 && !root.trayMenuOpen)
         root.trayMenuOpen = true
-      else if (root.trayMenuOpen && children.length === 0)
+      else if (root.trayMenuOpen && children.values.length === 0)
         root.close()
     }
   }
