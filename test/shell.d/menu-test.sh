@@ -273,8 +273,6 @@ const x86OnlyInstallRows = [
   'install.ai.lm-studio',
   'install.ai.ollama',
   'install.browser.edge',
-  'install.editor.cursor',
-  'install.editor.zed',
   'install.service.dropbox',
   'install.service.spotify',
 ]
