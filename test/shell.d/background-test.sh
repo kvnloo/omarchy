@@ -74,4 +74,11 @@ assert(
     /function prepareBackground[\s\S]*?requestNativeSize\(path\)/.test(backgroundQml),
   'background never probes videos and probes a prepared frame ahead of its transition'
 )
+assert(
+  /if \(!path \|\| \(!force && finalPath === currentBackground\)\) return[\s\S]*?backgroundVersion \+= 1/.test(backgroundQml) &&
+    /id: base[\s\S]*?path: root\.displayedBackground\s*version: root\.backgroundVersion/.test(backgroundQml) &&
+    mediaQml.includes('cached: version === 0') &&
+    mediaQml.includes('Util.fileUrl(path) + (version ? "?v=" + version : "")'),
+  'a theme switch reloads an unchanged wallpaper path by bumping the base frame version'
+)
 JS
