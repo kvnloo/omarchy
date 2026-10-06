@@ -74,6 +74,33 @@ volumeWrites = audio.finishVolumeWrite(volumeWrites)
 assert(!volumeWrites.running, 'audio volume queue becomes idle after the final write')
 assertEqual(volumeWrites.pendingPercent, -1, 'no stale volume write remains after the final value')
 
+
+// Per-channel pactl fallback must preserve left/right balance (40/80 → not 55/55).
+assert(
+  typeof audio.scaleChannelVolumes === 'function',
+  'audio exposes scaleChannelVolumes for pactl per-channel writes'
+)
+assert(
+  typeof audio.channelPercentsFromVolumes === 'function',
+  'audio exposes channelPercentsFromVolumes for pactl argv'
+)
+
+// 40%/80% at master 0.8, step master to 0.55 → proportional 27.5% / 55%
+const scaled = audio.scaleChannelVolumes([0.40, 0.80], 0.55)
+assertEqual(scaled.length, 2, 'scaleChannelVolumes keeps channel count')
+assert(Math.abs(scaled[0] - 0.275) < 1e-9, 'left channel scales 40%→27.5% when master 0.8→0.55')
+assert(Math.abs(scaled[1] - 0.55) < 1e-9, 'right channel scales 80%→55% when master 0.8→0.55')
+assert(Math.abs(scaled[0] / scaled[1] - 0.40 / 0.80) < 1e-9, '40/80 ratio preserved after scale')
+
+const percents = audio.channelPercentsFromVolumes(scaled)
+assertDeepEqual(percents, [28, 55], 'channel percents round for pactl argv')
+
+let balanced = audio.newVolumeWriteState()
+balanced = audio.queueVolumeWrite(balanced, 'bluez_output.speaker', percents)
+balanced = audio.beginVolumeWrite(balanced)
+assertDeepEqual(balanced.activePercents, [28, 55], 'volume queue carries per-channel percents')
+assertEqual(balanced.activePercent, undefined, 'single activePercent is not used for multi-channel writes')
+
 const fs = require('fs')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/audio/Panel.qml', 'utf8')
 assert(
