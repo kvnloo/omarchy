@@ -10,39 +10,41 @@ const fs = require('fs')
 const barSource = fs.readFileSync(path.join(root, 'shell/plugins/bar/Bar.qml'), 'utf8')
 const panelSource = fs.readFileSync(path.join(root, 'shell/plugins/panels/monitor/Panel.qml'), 'utf8')
 
-const tooltipBlock = barSource.slice(
+const tooltipWindow = barSource.slice(
+  barSource.indexOf('id: tooltipWindow'),
+  barSource.indexOf('id: tooltipBubble')
+)
+const tooltipBubble = barSource.slice(
   barSource.indexOf('id: tooltipBubble'),
   barSource.indexOf('id: tooltipLabel')
 )
 
+// Window is padded beyond ceil(bubble) so a 1px border survives at small text
+// sizes (e.g. 9) and 1.25x fractional device pixels.
 assert(
-  /width:\s*tooltipWindow\.width/.test(tooltipBlock)
-    && /height:\s*tooltipWindow\.height/.test(tooltipBlock),
-  'bar tooltip bubble fills its rounded-up window'
+  /implicitWidth:\s*Math\.ceil\(tooltipBubble\.implicitWidth\)\s*\+\s*2/.test(tooltipWindow)
+    && /implicitHeight:\s*Math\.ceil\(tooltipBubble\.implicitHeight\)\s*\+\s*2/.test(tooltipWindow),
+  'bar tooltip window pads 2 logical px beyond the ceil of the bubble'
 )
 
 assert(
-  /readonly property real cellWidth: root\.scaleValues\.length > 0\s*\n\s*\?\s*Math\.floor\(\(width - spacing \* \(columns - 1\)\) \/ columns\)/.test(panelSource),
-  'monitor scaleRow.cellWidth snaps with Math.floor'
+  /anchors\.centerIn:\s*parent/.test(tooltipBubble),
+  'bar tooltip bubble is centered inside the padded transparent window'
 )
 
-function cellWidth(width, spacing, columns) {
-  return columns > 0 ? Math.floor((width - spacing * (columns - 1)) / columns) : 0
-}
+assert(
+  !/width:\s*tooltipWindow\.width/.test(tooltipBubble)
+    && !/height:\s*tooltipWindow\.height/.test(tooltipBubble),
+  'bar tooltip bubble is not stretched to the window edge (keeps inset for the border)'
+)
 
-const width = 280
-const spacing = 3
-const columns = 6
-const snapped = cellWidth(width, spacing, columns)
-
-assertEqual(Number.isInteger(snapped), true, 'cellWidth is an integer logical pixel')
-assert(snapped * columns + spacing * (columns - 1) <= width, 'floored cellWidth does not overflow the row')
-assertEqual(snapped, 44, 'six-preset 280px row floors to 44px cells')
-
-const remainderAt125 = (snapped * 1.25) % 1
-assertEqual(remainderAt125, 0, '1.25x maps floored cellWidth onto whole device pixels')
-
-const raw = (width - spacing * (columns - 1)) / columns
-assert(!(Number.isInteger(raw)), 'raw unfloored cellWidth stays fractional (regression fixture)')
-assert((raw * 1.25) % 1 !== 0, 'raw cellWidth leaves a 1.25x device-pixel remainder')
+// Scale-pill cellWidth change does not fix #10085 — leave the unfloored formula.
+assert(
+  /readonly property real cellWidth: root\.scaleValues\.length > 0\s*\n\s*\?\s*\(width - spacing \* \(columns - 1\)\) \/ columns/.test(panelSource),
+  'monitor scaleRow.cellWidth stays unfloored (scale-pill snap dropped from this PR)'
+)
+assert(
+  !/Math\.floor\(\(width - spacing \* \(columns - 1\)\) \/ columns\)/.test(panelSource),
+  'monitor scaleRow.cellWidth must not use Math.floor in this narrowed PR'
+)
 JS
