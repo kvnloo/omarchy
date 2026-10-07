@@ -336,8 +336,12 @@ fi
 #
 # Without a session runtime dir, keep the lock beside the state it guards: a
 # fixed name in /tmp can be claimed by another account, and then nothing locks.
+# Private, since flock works on a read-only fd and a home may be traversable.
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-$HOME/.local/state/omarchy}"
 mkdir -p "$RUNTIME_DIR" || exit 1
+if [[ -z ${XDG_RUNTIME_DIR:-} ]]; then
+  chmod 700 "$RUNTIME_DIR" || exit 1
+fi
 exec 9>"$RUNTIME_DIR/omarchy-theme-set.lock"
 flock 9
 

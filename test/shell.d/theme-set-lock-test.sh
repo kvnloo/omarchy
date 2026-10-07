@@ -72,3 +72,9 @@ flock -u 7
 exec 7>&-
 (( status == 124 )) || fail "theme set waits on the lock beside its state" "exit $status, expected a timeout"
 pass "theme set waits on the lock beside its state"
+
+# Another account that can reach the lock can hold it, read-only or not.
+chmod 755 "$test_home/.local/state/omarchy"
+run_no_runtime_dir >/dev/null 2>&1 || fail "the fallback lock dir is private" "theme set failed"
+[[ $(stat -c %a "$test_home/.local/state/omarchy") == "700" ]] || fail "the fallback lock dir is private" "mode $(stat -c %a "$test_home/.local/state/omarchy")"
+pass "the fallback lock dir is private"
