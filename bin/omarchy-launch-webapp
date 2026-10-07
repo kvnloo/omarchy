@@ -10,7 +10,21 @@ google-chrome* | brave* | microsoft-edge* | opera* | vivaldi* | helium*) ;;
 *) browser="chromium.desktop" ;;
 esac
 
-browser_exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1)
+# OMARCHY_APPLICATIONS_DIRS is a colon-separated list of directories that
+# contain .desktop files. Tests point it at a temp tree so host entries under
+# /usr/share/applications cannot shadow missing-Exec cases.
+if [[ -n ${OMARCHY_APPLICATIONS_DIRS:-} ]]; then
+  IFS=: read -ra app_dirs <<<"$OMARCHY_APPLICATIONS_DIRS"
+else
+  app_dirs=("$HOME/.local/share/applications" "$HOME/.nix-profile/share/applications" /usr/share/applications)
+fi
+
+browser_exec=
+for app_dir in "${app_dirs[@]}"; do
+  [[ -r $app_dir/$browser ]] || continue
+  browser_exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' "$app_dir/$browser" | head -1)
+  [[ -n $browser_exec ]] && break
+done
 
 # An allowlisted name can still have no desktop entry (Zen falls through to
 # chromium.desktop, and Chromium may not be installed). An empty Exec must
