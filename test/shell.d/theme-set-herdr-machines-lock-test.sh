@@ -4,15 +4,18 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+# A private umask would make the fallback dir 700 without the chmod under test.
+umask 022
 test_tmp=$(mktemp -d)
-trap 'rm -rf "$test_tmp"; rm -f /tmp/omarchy-theme-set-herdr-machines.lock' EXIT
+trap 'rm -rf "$test_tmp"' EXIT
 
-test_home="$test_tmp/home"
 stub_bin="$test_tmp/bin"
-mkdir -p "$test_home/.local/state/omarchy/current" "$stub_bin" "$test_tmp/state"
+state_home="$test_tmp/state"
+lock_dir="$state_home/omarchy"
+lock="$lock_dir/omarchy-theme-set-herdr-machines.lock"
+mkdir -p "$test_tmp/home" "$stub_bin"
 
-# No machines listed: the run stops after the toggle check, but the lock is
-# taken (and the serialization comment enforced) before that.
+# No machines listed: the run stops after the toggle check, once the lock is held.
 cat >"$stub_bin/herdr" <<'EOF'
 #!/bin/bash
 exit 0
@@ -21,36 +24,29 @@ chmod +x "$stub_bin/herdr"
 
 run_no_runtime_dir() {
   env -u XDG_RUNTIME_DIR \
-    HOME="$test_home" XDG_STATE_HOME="$test_tmp/state" \
+    HOME="$test_tmp/home" XDG_STATE_HOME="$state_home" \
     PATH="$stub_bin:$ROOT/bin:$PATH" \
-    timeout 10 omarchy-theme-set-herdr-machines
+    timeout 5 omarchy-theme-set-herdr-machines
 }
 
-# A fixed lock name in world-writable /tmp is a name any other local account
-# can pre-create. As a symlink it redirects the truncating open.
-echo precious >"$test_tmp/victim"
-ln -s "$test_tmp/victim" /tmp/omarchy-theme-set-herdr-machines.lock
-run_no_runtime_dir >/dev/null 2>&1
-rm -f /tmp/omarchy-theme-set-herdr-machines.lock
-[[ $(cat "$test_tmp/victim") == "precious" ]] || fail "lock open follows a pre-planted /tmp symlink" "victim file was truncated"
-pass "lock open ignores a pre-planted /tmp symlink"
+# A lock in world-writable /tmp can be opened read-only and held by another account,
+# starving every theme sync, so without a session runtime dir it lives in private state.
+run_no_runtime_dir >/dev/null 2>&1 || fail "runs without a session runtime dir"
+[[ -f $lock ]] || fail "lock lands in the private state dir"
+pass "lock lands in the private state dir"
 
-# Held by another account, the same lock starves every theme sync forever.
-exec 8>/tmp/omarchy-theme-set-herdr-machines.lock
+[[ $(stat -c %a "$lock_dir") == "700" ]] || fail "fallback lock dir is private" "mode $(stat -c %a "$lock_dir")"
+pass "fallback lock dir is private"
+
+# Moving the lock must not lose it: a run waits while the lock is held.
+exec 8<"$lock"
 flock 8
-if run_no_runtime_dir >/dev/null 2>&1; then
-  flock -u 8
-  exec 8>&-
-  rm -f /tmp/omarchy-theme-set-herdr-machines.lock
-  pass "a lock held by another account cannot starve theme sync"
+status=0
+run_no_runtime_dir >/dev/null 2>&1 || status=$?
+flock -u 8
+exec 8<&-
+if (( status == 124 )); then
+  pass "a held lock serializes runs"
 else
-  flock -u 8
-  exec 8>&-
-  rm -f /tmp/omarchy-theme-set-herdr-machines.lock
-  fail "a lock held by another account cannot starve theme sync" "run timed out waiting on the /tmp lock"
+  fail "a held lock serializes runs" "run exited $status instead of waiting on the lock"
 fi
-
-# The fixed lock still serializes: it lives under the session runtime dir.
-lock_dir="$test_tmp/state/omarchy/omarchy-theme-set-herdr-machines.lock"
-[[ -f $lock_dir ]] || fail "lock lands in the per-user runtime dir"
-pass "lock lands in the per-user runtime dir"
