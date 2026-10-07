@@ -28,7 +28,7 @@ apps="$workdir/home/.local/share/applications"
 touch "$workdir/roms/My \"Best\" Game.sfc"
 install_game "$workdir/roms/My \"Best\" Game.sfc"
 exec_line=$(grep '^Exec=' "$apps/my-best-game.desktop")
-[[ $exec_line == *'My \"Best\" Game.sfc"' ]] || fail "quote in ROM path is escaped in Exec" "$exec_line"
+[[ $exec_line == *'My \\"Best\\" Game.sfc"' ]] || fail "quote in ROM path is escaped in Exec" "$exec_line"
 pass "quote in ROM path is escaped in Exec"
 
 # 2. A literal % must be doubled so the launcher does not treat it as a field code.
@@ -72,6 +72,15 @@ desktop_count=$(ls "$apps"/*.desktop | wc -l)
 name_line=$(grep '^Name=' "$apps"/*.desktop)
 [[ -n ${name_line#Name=} ]] || fail "(Europe).sfc gets a non-empty Name"
 pass "(Europe).sfc gets a real entry with a non-empty Name"
+
+# 4b. Two names that slug to nothing must not share one launcher file.
+rm -f "$apps"/*.desktop
+touch "$workdir/roms/!!!.sfc" "$workdir/roms/???.sfc"
+install_game "$workdir/roms/!!!.sfc"
+install_game "$workdir/roms/???.sfc"
+desktop_count=$(ls "$apps"/*.desktop | wc -l)
+(( desktop_count == 2 )) || fail "two empty-slug ROMs keep separate entries" "$(ls "$apps")"
+pass "two empty-slug ROMs keep separate entries"
 
 # 5. Ordinary names are byte-identical to the old output shape.
 rm -f "$apps"/*.desktop

@@ -47,21 +47,16 @@ if [[ ! -f $core_path ]]; then
 fi
 
 desktop_exec_quote() {
-  # One Exec argument, double-quoted per the freedesktop Desktop Entry spec:
-  # inside quotes a literal " and \ take a backslash, and a literal % becomes
-  # %%. Without this a quote in a path breaks the argument grouping and a %
-  # is treated as a field code (%U, %F, ...) by the launcher.
-  # A raw newline/CR/tab would likewise break the value onto a new key line,
-  # so escape them after the backslash doubling, mirroring
-  # desktop_string_escape.
+  # One Exec argument, double-quoted per the freedesktop Exec spec: inside quotes
+  # " ` $ \ take a backslash and a literal % becomes %%. The whole Exec line then
+  # goes through desktop_string_escape, as in omarchy-webapp-install.
   local value="$1"
 
   value=${value//\\/\\\\}
   value=${value//\"/\\\"}
+  value=${value//\`/\\\`}
+  value=${value//\$/\\\$}
   value=${value//%/%%}
-  value=${value//$'\t'/\\t}
-  value=${value//$'\r'/\\r}
-  value=${value//$'\n'/\\n}
 
   printf '"%s"' "$value"
 }
@@ -91,8 +86,10 @@ fi
 desktop_name="$game_name"
 desktop_id=$(printf '%s' "$desktop_name" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/^-//; s/-$//')
 
+# A name with no ASCII letters or digits (e.g. Japanese titles) slugs to nothing;
+# key the fallback on the ROM path so a second such game keeps its own launcher.
 if [[ -z $desktop_id ]]; then
-  desktop_id="retro-game"
+  desktop_id="retro-game-$(printf '%s' "$game_path" | md5sum | cut -d' ' -f1)"
 fi
 
 desktop_dir="$HOME/.local/share/applications"
@@ -104,7 +101,7 @@ cat >"$desktop_file" <<EOF
 Version=1.0
 Name=$(desktop_string_escape "$desktop_name")
 Comment=Play $(desktop_string_escape "$game_name") with RetroArch
-Exec=retroarch -L $(desktop_exec_quote "$core_path") $(desktop_exec_quote "$game_path")
+Exec=$(desktop_string_escape "retroarch -L $(desktop_exec_quote "$core_path") $(desktop_exec_quote "$game_path")")
 Terminal=false
 Type=Application
 Icon=retro-gaming
