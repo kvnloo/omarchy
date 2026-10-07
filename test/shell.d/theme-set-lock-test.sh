@@ -4,8 +4,17 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+tmp_lock=/tmp/omarchy-theme-set.lock
+planted=0
+
 test_tmp=$(mktemp -d)
-trap 'rm -rf "$test_tmp"; rm -f /tmp/omarchy-theme-set.lock' EXIT
+cleanup() {
+  rm -rf "$test_tmp"
+  if (( planted )); then
+    rm -f "$tmp_lock"
+  fi
+}
+trap cleanup EXIT
 
 test_home="$test_tmp/home"
 mkdir -p "$test_home/.local/state/omarchy/current" "$test_tmp/state"
@@ -17,33 +26,46 @@ run_no_runtime_dir() {
     HOME="$test_home" XDG_STATE_HOME="$test_tmp/state" \
     OMARCHY_PATH="$ROOT" OMARCHY_THEME_HEADLESS=1 OMARCHY_THEME_SKIP_BACKGROUND=1 \
     PATH="$ROOT/bin:$PATH" \
-    timeout 30 omarchy-theme-set tokyo-night
+    timeout "${1:-30}" omarchy-theme-set tokyo-night
 }
 
 # A fixed lock name in world-writable /tmp is a name any other local account
-# can pre-create. As a symlink it redirects the truncating open.
-echo precious >"$test_tmp/victim"
-ln -s "$test_tmp/victim" /tmp/omarchy-theme-set.lock
-run_no_runtime_dir >/dev/null 2>&1
-rm -f /tmp/omarchy-theme-set.lock
-[[ $(cat "$test_tmp/victim") == "precious" ]] || fail "lock open follows a pre-planted /tmp symlink" "victim file was truncated"
-pass "lock open ignores a pre-planted /tmp symlink"
-
-# Held by another account, the same lock starves every theme change forever.
-exec 8>/tmp/omarchy-theme-set.lock
-flock 8
-if run_no_runtime_dir >/dev/null 2>&1; then
-  flock -u 8
-  exec 8>&-
-  rm -f /tmp/omarchy-theme-set.lock
-  pass "a lock held by another account cannot starve theme set"
+# can pre-create. Leave one this test did not plant alone.
+if [[ -e $tmp_lock || -L $tmp_lock ]]; then
+  skip "lock open ignores a pre-planted /tmp symlink ($tmp_lock already exists)"
+  skip "a lock held in /tmp cannot starve theme set ($tmp_lock already exists)"
 else
+  planted=1
+  echo precious >"$test_tmp/victim"
+  ln -s "$test_tmp/victim" "$tmp_lock"
+  run_no_runtime_dir >/dev/null 2>&1
+  rm -f "$tmp_lock"
+  [[ $(cat "$test_tmp/victim") == "precious" ]] || fail "lock open ignores a pre-planted /tmp symlink" "victim file was truncated"
+  pass "lock open ignores a pre-planted /tmp symlink"
+
+  exec 8>"$tmp_lock"
+  flock 8
+  if run_no_runtime_dir >/dev/null 2>&1; then
+    result=pass
+  else
+    result=fail
+  fi
   flock -u 8
   exec 8>&-
-  rm -f /tmp/omarchy-theme-set.lock
-  fail "a lock held by another account cannot starve theme set" "run timed out waiting on the /tmp lock"
+  rm -f "$tmp_lock"
+  planted=0
+  [[ $result == "pass" ]] || fail "a lock held in /tmp cannot starve theme set" "run timed out waiting on the /tmp lock"
+  pass "a lock held in /tmp cannot starve theme set"
 fi
 
-# The fixed lock still serializes: it lives under the per-user runtime dir.
-[[ -f $test_tmp/state/omarchy/omarchy-theme-set.lock ]] || fail "lock lands in the per-user runtime dir"
-pass "lock lands in the per-user runtime dir"
+# The lock still serializes, and beside the theme state it guards rather than
+# under XDG_STATE_HOME: a run waits while it is held.
+state_lock="$test_home/.local/state/omarchy/omarchy-theme-set.lock"
+exec 7>"$state_lock"
+flock 7
+status=0
+run_no_runtime_dir 3 >/dev/null 2>&1 || status=$?
+flock -u 7
+exec 7>&-
+(( status == 124 )) || fail "theme set waits on the lock beside its state" "exit $status, expected a timeout"
+pass "theme set waits on the lock beside its state"
