@@ -29,7 +29,6 @@ printf 'brightnessctl %s\n' "$*" >>"$CALL_LOG"
 case " $* " in
   *" max "*) printf '100\n' ;;
   *" get "*) cat "$CUR_FILE" ;;
-  *" -r "*) printf 'restored\n' ;;
   *" set "*) printf '%s\n' "${*: -1}" | tr -dc '0-9' >"$CUR_FILE" ;;
 esac
 SH
