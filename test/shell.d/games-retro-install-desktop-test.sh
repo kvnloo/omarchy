@@ -90,3 +90,18 @@ grep -qxF "Exec=retroarch -L \"$workdir/cores/snes9x_libretro.so\" \"$workdir/ro
   || fail "ordinary ROM keeps the plain Exec shape"
 grep -qxF 'Name=Super Game' "$apps/super-game.desktop" || fail "ordinary ROM keeps the plain Name shape"
 pass "ordinary ROM keeps the plain .desktop shape"
+
+# 6. Launched through GLib, as gtk-launch does, retroarch gets the exact ROM path.
+printf '#!/bin/bash\nprintf "%%s\\0" "$@" >"%s/argv"\n' "$workdir" >"$workdir/stubs/retroarch"
+chmod +x "$workdir/stubs/retroarch"
+
+for rom in 'My "Best" Game.sfc' 'back\slash\.sfc' 'Cash $HOME `id`.sfc' 'game%U.sfc' $'evil\nExec=touch-pwned.sfc'; do
+  rm -f "$apps"/*.desktop "$workdir/argv"
+  touch "$workdir/roms/$rom"
+  install_game "$workdir/roms/$rom"
+  PATH="$workdir/stubs:/usr/bin:/bin" gio launch "$apps"/*.desktop || fail "GLib loads the entry for $(printf '%q' "$rom")"
+  for _ in {1..50}; do [[ -s $workdir/argv ]] && break; sleep 0.1; done
+  mapfile -d '' -t argv <"$workdir/argv"
+  [[ ${argv[2]} == "$workdir/roms/$rom" ]] || fail "launch passes the exact ROM path for $(printf '%q' "$rom")" "${argv[2]}"
+done
+pass "launched entries pass the exact ROM path to retroarch"
