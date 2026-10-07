@@ -14,6 +14,8 @@ BarWidget {
   property bool expanded: false
   property bool managePopupOpen: false
   property bool trayMenuOpen: false
+  // A click whose menu has no rows yet; the popup opens when they arrive.
+  property bool trayMenuPending: false
   property var activeTrayItem: null
   property var activeTrayAnchor: null
   readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -112,10 +114,17 @@ BarWidget {
   function close() {
     managePopupOpen = false
     trayMenuOpen = false
-    // Clearing the active item cancels any late onChildrenChanged open so a
-    // dismissed menu (or another bar popup) cannot reopen without a click.
-    activeTrayItem = null
-    activeTrayAnchor = null
+    trayMenuPending = false
+  }
+
+  function syncTrayMenuOpen() {
+    var hasChildren = TrayModel.menuModelHasChildren(trayMenuOpener.children)
+    if (hasChildren && trayMenuPending) {
+      trayMenuPending = false
+      trayMenuOpen = true
+    } else if (!hasChildren && trayMenuOpen) {
+      close()
+    }
   }
 
   function openTrayMenu(item, anchorItem, mouse) {
@@ -131,7 +140,8 @@ BarWidget {
     resetTrayMenu()
     activeTrayItem = item
     activeTrayAnchor = anchorItem
-    trayMenuOpen = TrayModel.menuModelHasChildren(trayMenuOpener.children)
+    trayMenuPending = true
+    syncTrayMenuOpen()
   }
 
   function trayIconSource(icon) {
@@ -519,12 +529,22 @@ BarWidget {
   QsMenuOpener {
     id: trayMenuOpener
     menu: root.activeTrayItem ? root.activeTrayItem.menu : null
-    onChildrenChanged: {
-      var hasChildren = TrayModel.menuModelHasChildren(children)
-      if (root.activeTrayItem && hasChildren && !root.trayMenuOpen)
-        root.trayMenuOpen = true
-      else if (root.trayMenuOpen && !hasChildren)
-        root.close()
+    onChildrenChanged: root.syncTrayMenuOpen()
+  }
+
+  // Rows a loaded menu gains or loses arrive as valuesChanged on the same
+  // model; childrenChanged only fires when the menu handle itself changes.
+  Connections {
+    target: trayMenuOpener.children
+    function onValuesChanged() { root.syncTrayMenuOpen() }
+  }
+
+  // Another bar popup took over before the rows arrived: drop the stale click.
+  Connections {
+    target: root.bar
+    ignoreUnknownSignals: true
+    function onActivePopoutChanged() {
+      if (root.bar.activePopout) root.trayMenuPending = false
     }
   }
 

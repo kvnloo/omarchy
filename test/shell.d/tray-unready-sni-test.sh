@@ -31,33 +31,43 @@ assert(
   /if \(!item \|\| !item\.menu\) return/.test(openTray),
   'SNI without a menu is a no-op'
 )
+assert(/trayMenuPending = true\n\s*syncTrayMenuOpen\(\)/.test(openTray), 'a click marks the menu pending, then opens it if rows are already there')
+
+const sync = source.slice(
+  source.indexOf('function syncTrayMenuOpen()'),
+  source.indexOf('function openTrayMenu(')
+)
 assert(
-  /trayMenuOpen = TrayModel\.menuModelHasChildren\(trayMenuOpener\.children\)/.test(openTray),
-  'initial open uses ObjectModel values through the production helper'
+  /var hasChildren = TrayModel\.menuModelHasChildren\(trayMenuOpener\.children\)/.test(sync),
+  'readiness uses ObjectModel values through the production helper'
+)
+assert(
+  /if \(hasChildren && trayMenuPending\) \{\s*trayMenuPending = false\s*trayMenuOpen = true/.test(sync),
+  'rows open the popup only for a pending click, once'
+)
+assert(
+  /else if \(!hasChildren && trayMenuOpen\) \{\s*close\(\)/.test(sync),
+  'dropping back to zero rows releases the popup'
 )
 
 const opener = source.slice(
   source.indexOf('QsMenuOpener {\n    id: trayMenuOpener'),
   source.indexOf('PopupCard {\n    id: trayMenuPopup')
 )
-assert(/onChildrenChanged/.test(opener), 'late-ready SNI menus are observed')
+assert(/onChildrenChanged: root\.syncTrayMenuOpen\(\)/.test(opener), 'a menu handle that loads late is observed')
 assert(
-  /var hasChildren = TrayModel\.menuModelHasChildren\(children\)/.test(opener),
-  'late-ready handler uses the same production ObjectModel helper'
+  /target: trayMenuOpener\.children\s*function onValuesChanged\(\) \{ root\.syncTrayMenuOpen\(\) \}/.test(opener),
+  'rows added to or removed from a loaded menu are observed'
 )
 assert(
-  /if \(root\.activeTrayItem && hasChildren && !root\.trayMenuOpen\)/.test(opener),
-  'a non-empty late-ready menu opens the popup'
-)
-assert(
-  /else if \(root\.trayMenuOpen && !hasChildren\)/.test(opener),
-  'dropping back to zero rows releases the popup'
+  /function onActivePopoutChanged\(\) \{\s*if \(root\.bar\.activePopout\) root\.trayMenuPending = false/.test(opener),
+  'another bar popup cancels a pending tray click'
 )
 
 const closeFn = source.slice(
   source.indexOf('function close()'),
-  source.indexOf('function openTrayMenu(')
+  source.indexOf('function syncTrayMenuOpen()')
 )
-assert(/activeTrayItem = null/.test(closeFn), 'close() clears activeTrayItem so late children cannot reopen the menu')
-assert(/activeTrayAnchor = null/.test(closeFn), 'close() clears activeTrayAnchor with the item')
+assert(/trayMenuPending = false/.test(closeFn), 'close() cancels a pending open so a dismissed menu cannot reopen itself')
+assert(!/activeTrayItem = null/.test(closeFn), 'close() keeps the active item so the menu fades out with its rows')
 JS
