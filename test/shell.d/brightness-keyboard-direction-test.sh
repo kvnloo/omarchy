@@ -49,11 +49,11 @@ run_keyboard() {
 # the keyboard backlight. It must be rejected before any hardware is touched.
 printf '10\n' >"$state_file"
 : >"$call_log"
-if run_keyboard --no-osd bogus >/dev/null 2>"$test_tmp/stderr"; then
-  fail "unknown direction is rejected"
-fi
+status=0
+run_keyboard --no-osd bogus >/dev/null 2>"$test_tmp/stderr" || status=$?
+(( status == 1 )) || fail "unknown direction is rejected" "exit $status"
 grep -q 'Usage:' "$test_tmp/stderr" || fail "unknown direction prints usage" "$(cat "$test_tmp/stderr")"
-if grep -q ' set ' "$call_log"; then
+if [[ -s $call_log ]]; then
   fail "unknown direction never touches the backlight" "$(cat "$call_log")"
 fi
 [[ $(cat "$state_file") == "10" ]] || fail "unknown direction leaves the brightness unchanged"
