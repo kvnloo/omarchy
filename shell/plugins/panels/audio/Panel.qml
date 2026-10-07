@@ -469,7 +469,9 @@ Panel {
     var percents = volumes && volumes.length
       ? Model.channelPercentsFromVolumes(volumes)
       : Model.channelPercentsFromVolumes(Model.scaleChannelVolumes([], volume))
-    var name = volumeSinkName || (volumeSink.name ? String(volumeSink.name) : "")
+    // The node whose channels were just read, not volumeSinkName, which can
+    // still name an output that has gone while volumeSink has fallen back.
+    var name = volumeSink.name ? String(volumeSink.name) : ""
     root.queueOutputVolumeWrite(name, percents)
     return volume
   }
