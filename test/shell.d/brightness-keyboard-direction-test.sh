@@ -4,7 +4,20 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+# The fake /sys/class/leds is bind-mounted in a private mount namespace, so the
+# test runs without root and never shadows the machine's real LEDs.
+if [[ ${OMARCHY_KBD_TEST_NAMESPACE:-0} != 1 ]]; then
+  if unshare --user --map-current-user --keep-caps --mount true 2>/dev/null; then
+    exec env OMARCHY_KBD_TEST_NAMESPACE=1 \
+      unshare --user --map-current-user --keep-caps --mount --propagation private bash "$0"
+  else
+    skip "unprivileged mount namespaces unavailable; skipping keyboard direction tests"
+    exit 0
+  fi
+fi
+
 test_tmp=$(mktemp -d)
+trap 'rm -rf "$test_tmp"' EXIT
 mock_bin="$test_tmp/bin"
 call_log="$test_tmp/calls"
 state_file="$test_tmp/cur"
@@ -25,12 +38,7 @@ chmod +x "$mock_bin/brightnessctl"
 fake_leds="$test_tmp/leds"
 mkdir -p "$fake_leds/fake_kbd_backlight"
 
-if mount --bind "$fake_leds" /sys/class/leds 2>/dev/null; then
-  trap 'umount /sys/class/leds 2>/dev/null || true; rm -rf "$test_tmp"' EXIT
-else
-  skip "cannot bind-mount a fake /sys/class/leds; skipping keyboard direction tests"
-  exit 0
-fi
+mount --bind "$fake_leds" /sys/class/leds || fail "a fake /sys/class/leds mounts in the test's namespace"
 
 run_keyboard() {
   CALL_LOG="$call_log" CUR_FILE="$state_file" PATH="$mock_bin:$ROOT/bin:$PATH" \
