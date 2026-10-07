@@ -35,9 +35,9 @@ if [[ -e $tmp_lock || -L $tmp_lock ]]; then
   skip "lock open ignores a pre-planted /tmp symlink ($tmp_lock already exists)"
   skip "a lock held in /tmp cannot starve theme set ($tmp_lock already exists)"
 else
-  planted=1
   echo precious >"$test_tmp/victim"
   ln -s "$test_tmp/victim" "$tmp_lock"
+  planted=1
   run_no_runtime_dir >/dev/null 2>&1
   rm -f "$tmp_lock"
   [[ $(cat "$test_tmp/victim") == "precious" ]] || fail "lock open ignores a pre-planted /tmp symlink" "victim file was truncated"
@@ -61,6 +61,9 @@ fi
 # The lock still serializes, and beside the theme state it guards rather than
 # under XDG_STATE_HOME: a run waits while it is held.
 state_lock="$test_home/.local/state/omarchy/omarchy-theme-set.lock"
+rm -f "$state_lock"
+run_no_runtime_dir >/dev/null 2>&1 || fail "theme set waits on the lock beside its state" "an unlocked run failed"
+[[ -f $state_lock ]] || fail "theme set waits on the lock beside its state" "no lock at $state_lock"
 exec 7>"$state_lock"
 flock 7
 status=0
