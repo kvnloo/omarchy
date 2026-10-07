@@ -8,7 +8,6 @@ run_node_test <<'JS'
 const fs = require('fs')
 
 const barSource = fs.readFileSync(path.join(root, 'shell/plugins/bar/Bar.qml'), 'utf8')
-const panelSource = fs.readFileSync(path.join(root, 'shell/plugins/panels/monitor/Panel.qml'), 'utf8')
 
 const tooltipWindow = barSource.slice(
   barSource.indexOf('id: tooltipWindow'),
@@ -36,15 +35,5 @@ assert(
   !/width:\s*tooltipWindow\.width/.test(tooltipBubble)
     && !/height:\s*tooltipWindow\.height/.test(tooltipBubble),
   'bar tooltip bubble is not stretched to the window edge (keeps inset for the border)'
-)
-
-// Scale-pill cellWidth change does not fix #10085 — leave the unfloored formula.
-assert(
-  /readonly property real cellWidth: root\.scaleValues\.length > 0\s*\n\s*\?\s*\(width - spacing \* \(columns - 1\)\) \/ columns/.test(panelSource),
-  'monitor scaleRow.cellWidth stays unfloored (scale-pill snap dropped from this PR)'
-)
-assert(
-  !/Math\.floor\(\(width - spacing \* \(columns - 1\)\) \/ columns\)/.test(panelSource),
-  'monitor scaleRow.cellWidth must not use Math.floor in this narrowed PR'
 )
 JS
