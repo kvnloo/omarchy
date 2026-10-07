@@ -31,7 +31,8 @@ assert(
   /if \(!item \|\| !item\.menu\) return/.test(openTray),
   'SNI without a menu is a no-op'
 )
-assert(/trayMenuPending = true\n\s*syncTrayMenuOpen\(\)/.test(openTray), 'a click marks the menu pending, then opens it if rows are already there')
+assert(/^\s*trayMenuPending = false\n\s*if \(!item \|\| !item\.menu\) return/m.test(openTray), 'any new click, even on an item without a menu, cancels the previous pending one')
+assert(/trayMenuPending = true\n\s*trayMenuPendingTimer\.restart\(\)\n\s*syncTrayMenuOpen\(\)/.test(openTray), 'a click marks the menu pending for a bounded time, then opens it if rows are already there')
 
 const sync = source.slice(
   source.indexOf('function syncTrayMenuOpen()'),
@@ -54,10 +55,14 @@ const opener = source.slice(
   source.indexOf('QsMenuOpener {\n    id: trayMenuOpener'),
   source.indexOf('PopupCard {\n    id: trayMenuPopup')
 )
-assert(/onChildrenChanged: root\.syncTrayMenuOpen\(\)/.test(opener), 'a menu handle that loads late is observed')
+assert(/onChildrenChanged: Qt\.callLater\(root\.syncTrayMenuOpen\)/.test(opener), 'a menu handle that loads late is observed')
 assert(
-  /target: trayMenuOpener\.children\s*function onValuesChanged\(\) \{ root\.syncTrayMenuOpen\(\) \}/.test(opener),
-  'rows added to or removed from a loaded menu are observed'
+  /target: trayMenuOpener\.children\s*function onValuesChanged\(\) \{ Qt\.callLater\(root\.syncTrayMenuOpen\) \}/.test(opener),
+  'rows added to or removed from a loaded menu are observed once the update settles, so replacing every row does not close the menu'
+)
+assert(
+  /id: trayMenuPendingTimer\s*interval: \d+\s*onTriggered: root\.trayMenuPending = false/.test(opener),
+  'a pending click expires'
 )
 assert(
   /function onActivePopoutChanged\(\) \{\s*if \(root\.bar\.activePopout\) root\.trayMenuPending = false/.test(opener),

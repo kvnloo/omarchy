@@ -131,6 +131,7 @@ BarWidget {
     // Unready SNI (Menu/IconName Get still failing) has no menu handle.
     // Taking the popup grab before QsMenuOpener has children leaves an empty
     // input owner over the bar, so an unready item is a no-op.
+    trayMenuPending = false
     if (!item || !item.menu) return
 
     // Reset before switching items: trayMenuOpener.menu binds to
@@ -141,6 +142,7 @@ BarWidget {
     activeTrayItem = item
     activeTrayAnchor = anchorItem
     trayMenuPending = true
+    trayMenuPendingTimer.restart()
     syncTrayMenuOpen()
   }
 
@@ -529,14 +531,22 @@ BarWidget {
   QsMenuOpener {
     id: trayMenuOpener
     menu: root.activeTrayItem ? root.activeTrayItem.menu : null
-    onChildrenChanged: root.syncTrayMenuOpen()
+    onChildrenChanged: Qt.callLater(root.syncTrayMenuOpen)
   }
 
   // Rows a loaded menu gains or loses arrive as valuesChanged on the same
-  // model; childrenChanged only fires when the menu handle itself changes.
+  // model, one per row, so a menu replacing every row passes through empty.
+  // Settle once the update is done rather than closing on the gap.
   Connections {
     target: trayMenuOpener.children
-    function onValuesChanged() { root.syncTrayMenuOpen() }
+    function onValuesChanged() { Qt.callLater(root.syncTrayMenuOpen) }
+  }
+
+  // A menu that never loads must not open long after the click was abandoned.
+  Timer {
+    id: trayMenuPendingTimer
+    interval: 3000
+    onTriggered: root.trayMenuPending = false
   }
 
   // Another bar popup took over before the rows arrived: drop the stale click.
