@@ -262,7 +262,8 @@ function scaleChannelVolumes(volumes, newVolume) {
 }
 
 function channelPercentsFromVolumes(volumes) {
-  var channels = Array.isArray(volumes) ? volumes : []
+  // audio.volumes is a QML sequence, which Array.isArray rejects.
+  var channels = volumes && typeof volumes.length === "number" ? volumes : []
   var percents = []
   for (var i = 0; i < channels.length; i++) {
     percents.push(Math.max(0, Math.min(100, Math.round((Number(channels[i]) || 0) * 100))))

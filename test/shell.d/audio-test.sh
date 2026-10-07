@@ -94,6 +94,11 @@ assert(Math.abs(scaled[0] / scaled[1] - 0.40 / 0.80) < 1e-9, '40/80 ratio preser
 
 const percents = audio.channelPercentsFromVolumes(scaled)
 assertDeepEqual(percents, [28, 55], 'channel percents round for pactl argv')
+assertDeepEqual(
+  audio.channelPercentsFromVolumes({ length: 2, 0: 0.4, 1: 0.8 }),
+  [40, 80],
+  'channel percents read the QML sequence audio.volumes, which is not a JS array'
+)
 
 let balanced = audio.newVolumeWriteState()
 balanced = audio.queueVolumeWrite(balanced, 'bluez_output.speaker', percents)
