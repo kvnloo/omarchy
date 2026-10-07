@@ -93,7 +93,17 @@ assert(Math.abs(scaled[1] - 0.55) < 1e-9, 'right channel scales 80%→55% when m
 assert(Math.abs(scaled[0] / scaled[1] - 0.40 / 0.80) < 1e-9, '40/80 ratio preserved after scale')
 
 const percents = audio.channelPercentsFromVolumes(scaled)
-assertDeepEqual(percents, [28, 55], 'channel percents round for pactl argv')
+assertDeepEqual(percents, [27.5, 55], 'channel percents keep fractions for pactl argv')
+assertDeepEqual(
+  audio.channelPercentsFromVolumes([0.006667, 0.013333]),
+  [0.67, 1.33],
+  'channel percents keep balance at low volume rather than rounding to 1/1'
+)
+assertDeepEqual(
+  audio.channelPercentsFromVolumes([0.6, 1.2]),
+  [60, 120],
+  'channel percents keep balance above 100% rather than capping one channel'
+)
 assertDeepEqual(
   audio.channelPercentsFromVolumes({ length: 2, 0: 0.4, 1: 0.8 }),
   [40, 80],
@@ -103,8 +113,8 @@ assertDeepEqual(
 let balanced = audio.newVolumeWriteState()
 balanced = audio.queueVolumeWrite(balanced, 'bluez_output.speaker', percents)
 balanced = audio.beginVolumeWrite(balanced)
-assertDeepEqual(balanced.activePercents, [28, 55], 'volume queue carries per-channel percents')
-assertEqual(balanced.activePercent, 28, 'activePercent mirrors the first channel for compat')
+assertDeepEqual(balanced.activePercents, [27.5, 55], 'volume queue carries per-channel percents')
+assertEqual(balanced.activePercent, 27.5, 'activePercent mirrors the first channel for compat')
 
 const fs = require('fs')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/audio/Panel.qml', 'utf8')

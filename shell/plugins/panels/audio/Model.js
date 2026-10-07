@@ -266,20 +266,26 @@ function channelPercentsFromVolumes(volumes) {
   var channels = volumes && typeof volumes.length === "number" ? volumes : []
   var percents = []
   for (var i = 0; i < channels.length; i++) {
-    percents.push(Math.max(0, Math.min(100, Math.round((Number(channels[i]) || 0) * 100))))
+    percents.push(channelPercent((Number(channels[i]) || 0) * 100))
   }
   return percents.length > 0 ? percents : [0]
+}
+
+// Neither rounded to whole percents nor capped at 100: either would change the
+// balance Quickshell's setter just preserved, at the bottom or the top of the range.
+function channelPercent(percent) {
+  return Math.max(0, Math.round((Number(percent) || 0) * 100) / 100)
 }
 
 function normalizePercents(percentOrPercents) {
   if (Array.isArray(percentOrPercents)) {
     var list = []
     for (var i = 0; i < percentOrPercents.length; i++) {
-      list.push(Math.max(0, Math.min(100, Math.round(Number(percentOrPercents[i]) || 0))))
+      list.push(channelPercent(percentOrPercents[i]))
     }
     return list.length > 0 ? list : [0]
   }
-  return [Math.max(0, Math.min(100, Math.round(Number(percentOrPercents) || 0)))]
+  return [channelPercent(percentOrPercents)]
 }
 
 function newVolumeWriteState() {
