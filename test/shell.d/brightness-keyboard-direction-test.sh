@@ -6,7 +6,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 # The fake /sys/class/leds is bind-mounted in a private mount namespace, so the
 # test runs without root and never shadows the machine's real LEDs.
-if [[ ${OMARCHY_KBD_TEST_NAMESPACE:-0} != 1 ]]; then
+if [[ ${OMARCHY_KBD_TEST_NAMESPACE:-0} != "1" ]]; then
   if unshare --user --map-current-user --keep-caps --mount true 2>/dev/null; then
     exec env OMARCHY_KBD_TEST_NAMESPACE=1 \
       unshare --user --map-current-user --keep-caps --mount --propagation private bash "$0"
