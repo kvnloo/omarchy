@@ -47,8 +47,8 @@ assert(
   'rows open the popup only for a pending click, once'
 )
 assert(
-  /else if \(!hasChildren && trayMenuOpen\) \{\s*close\(\)/.test(sync),
-  'dropping back to zero rows releases the popup'
+  /else if \(!hasChildren && trayMenuOpen\) \{(\s*\/\/.*)*\s*trayMenuOpen = false\s*\}/.test(sync),
+  'dropping back to zero rows releases the popup without cancelling a click on another item'
 )
 
 const opener = source.slice(

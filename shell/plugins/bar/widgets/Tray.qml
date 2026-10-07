@@ -123,7 +123,9 @@ BarWidget {
       trayMenuPending = false
       trayMenuOpen = true
     } else if (!hasChildren && trayMenuOpen) {
-      close()
+      // Not close(): switching items empties the model too, and the click on
+      // the new item must stay pending.
+      trayMenuOpen = false
     }
   }
 
