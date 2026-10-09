@@ -508,7 +508,7 @@ assertDeepEqual(
   'notifications restore nothing from an empty popup dir'
 )
 
-assert(!notifications.popupExpired({ timestamp: 0 }, 0, 999999), 'critical popups never expire on restore')
+assert(!notifications.popupExpired({ timestamp: 0 }, 0, 999999), 'critical popups without a timeout never expire on restore')
 const criticalWithTimeout = notifications.popupDuration(30000, true, 8000, 30000)
 assert(
   notifications.popupExpired({ timestamp: 1000 }, criticalWithTimeout, 40000),
