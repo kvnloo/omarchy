@@ -9,9 +9,7 @@ trap 'rm -rf "$test_tmp"' EXIT
 
 mock_bin="$test_tmp/bin"
 test_home="$test_tmp/home"
-apps_dir="$test_home/.local/share/applications"
-host_apps="$test_home/.nix-profile/share/applications"
-mkdir -p "$mock_bin" "$apps_dir" "$host_apps"
+mkdir -p "$mock_bin" "$test_home"
 uwsm_log="$test_tmp/uwsm"
 handoff_log="$test_tmp/handoff"
 
@@ -29,23 +27,23 @@ cat >"$mock_bin/setsid" <<'SH'
 [[ $1 == "--" ]] && shift
 exec "$@"
 SH
+cat >"$mock_bin/sed" <<'SH'
+#!/bin/bash
+[[ -n ${OMARCHY_TEST_BROWSER_EXEC:-} ]] && printf '%s\n' "$OMARCHY_TEST_BROWSER_EXEC"
+SH
 cat >"$mock_bin/uwsm-app" <<'SH'
 #!/bin/bash
 printf '%s\n' "$@" >"$OMARCHY_TEST_UWSM"
 SH
 chmod +x "$mock_bin"/*
 
-# A host-like chromium.desktop outside the isolated applications dir must not
-# satisfy the empty-Exec cases (Chessing234 / jandrusk: /usr shadows zen).
-printf '%s\n' '[Desktop Entry]' 'Exec=/usr/bin/chromium %U' >"$host_apps/chromium.desktop"
-
 run_launch() {
   local status
   rm -f "$uwsm_log" "$handoff_log"
   set +e
   HOME="$test_home" PATH="$mock_bin:$PATH" \
-    OMARCHY_APPLICATIONS_DIRS="$apps_dir" \
     OMARCHY_TEST_BROWSER="$1" \
+    OMARCHY_TEST_BROWSER_EXEC="${2:-}" \
     OMARCHY_TEST_UWSM="$uwsm_log" \
     OMARCHY_TEST_HANDOFF="$handoff_log" \
     bash "$ROOT/bin/omarchy-launch-webapp" "https://example.test/app" >"$test_tmp/out" 2>"$test_tmp/err"
@@ -62,15 +60,12 @@ grep -F 'no browser Exec found for chromium.desktop' "$test_tmp/err" >/dev/null 
   fail "empty browser exec names the missing desktop entry" "$(cat "$test_tmp/err")"
 pass "empty browser exec exits 1 and does not call uwsm-app"
 
-# Zen stays off the allowlist: its own Exec must not be used in place of chromium.
-printf '%s\n' '[Desktop Entry]' 'Exec=/opt/zen/zen %U' >"$apps_dir/zen.desktop"
 status=$(run_launch zen.desktop)
 [[ $status == "1" ]] || fail "a non-allowlisted browser still fails closed when chromium is missing" "status=$status"
 [[ ! -e $uwsm_log ]] || fail "a non-allowlisted browser is not launched" "$(cat "$uwsm_log")"
 pass "the browser allowlist is not widened"
 
-printf '%s\n' '[Desktop Entry]' 'Exec=google-chrome-stable %U' >"$apps_dir/google-chrome.desktop"
-status=$(run_launch google-chrome.desktop)
+status=$(run_launch google-chrome.desktop google-chrome-stable)
 [[ $status == "0" ]] || fail "an allowlisted browser with an Exec still launches" "status=$status $(cat "$test_tmp/err")"
 [[ -e $uwsm_log ]] || fail "an allowlisted browser reaches uwsm-app when handoff declines"
 grep -F 'google-chrome-stable' "$uwsm_log" >/dev/null || fail "uwsm-app receives the resolved Exec" "$(cat "$uwsm_log")"
