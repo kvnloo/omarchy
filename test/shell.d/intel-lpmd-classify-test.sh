@@ -50,11 +50,11 @@ assert_skips() {
   pass "lpmd skips $label (model $model)"
 }
 
-# Arrow Lake models were missing from the allowlist despite the
-# "Alder Lake and newer" comment: 181 (ARL-U), 197 (ARL-H), 198 (ARL-S).
+# Intel LPMD validates only Arrow Lake-U model 181. The desktop and H-series
+# model IDs are not in its supported-platform table.
 assert_installs 181 "Arrow Lake-U"
-assert_installs 197 "Arrow Lake-H"
-assert_installs 198 "Arrow Lake-S"
+assert_skips 197 "unsupported Arrow Lake-H"
+assert_skips 198 "unsupported Arrow Lake-S"
 
 # Previously supported generations still install.
 assert_installs 151 "Alder Lake"
