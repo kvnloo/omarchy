@@ -10,6 +10,7 @@ planted=0
 test_tmp=$(mktemp -d)
 cleanup() {
   rm -rf "$test_tmp"
+  [[ -z ${held:-} ]] || rm -f "$held"
   if (( planted )); then
     rm -f "$tmp_lock"
   fi
@@ -39,11 +40,15 @@ else
   ln -s "$test_tmp/victim" "$tmp_lock"
   planted=1
   run_no_runtime_dir >/dev/null 2>&1
-  rm -f "$tmp_lock"
   [[ $(cat "$test_tmp/victim") == "precious" ]] || fail "lock open ignores a pre-planted /tmp symlink" "victim file was truncated"
   pass "lock open ignores a pre-planted /tmp symlink"
 
-  exec 8>"$tmp_lock"
+  # Rename a held lock over the planted symlink rather than reopening the name,
+  # so it stays this test's throughout and nothing is opened through it.
+  held=$(mktemp /tmp/omarchy-theme-set.lock.XXXXXX)
+  exec 8>"$held"
+  mv -T "$held" "$tmp_lock"
+  held=""
   flock 8
   if run_no_runtime_dir >/dev/null 2>&1; then
     result=pass
