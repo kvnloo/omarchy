@@ -73,6 +73,26 @@ exec 7>&-
 (( status == 124 )) || fail "theme set waits on the lock beside its state" "exit $status, expected a timeout"
 pass "theme set waits on the lock beside its state"
 
+# A window transparency change writes into the current theme, so it waits on
+# the same lock.
+stub_dir="$test_tmp/bin"
+mkdir -p "$stub_dir"
+for command in hyprctl omarchy-notification-send omarchy-restart-terminal omarchy-theme-set-foot omarchy-restart-btop; do
+  printf '#!/bin/bash\n' >"$stub_dir/$command"
+done
+chmod +x "$stub_dir"/*
+exec 7>"$state_lock"
+flock 7
+status=0
+env -u XDG_RUNTIME_DIR \
+  HOME="$test_home" XDG_STATE_HOME="$test_tmp/state" XDG_CONFIG_HOME="$test_home/.config" \
+  OMARCHY_PATH="$ROOT" PATH="$stub_dir:$ROOT/bin:$PATH" \
+  timeout 3 omarchy-hyprland-window-transparency opaque >/dev/null 2>&1 || status=$?
+flock -u 7
+exec 7>&-
+(( status == 124 )) || fail "window transparency waits on the theme set lock" "exit $status, expected a timeout"
+pass "window transparency waits on the theme set lock"
+
 # Another account that can reach the lock can hold it, read-only or not.
 chmod 755 "$test_home/.local/state/omarchy"
 run_no_runtime_dir >/dev/null 2>&1 || fail "the fallback lock dir is private" "theme set failed"
