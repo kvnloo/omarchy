@@ -108,7 +108,7 @@ pass "ordinary ROM keeps the plain .desktop shape"
 printf '#!/bin/bash\nprintf "%%s\\0" "$@" >"%s/argv"\n' "$workdir" >"$workdir/stubs/retroarch"
 chmod +x "$workdir/stubs/retroarch"
 
-for rom in 'My "Best" Game.sfc' 'back\slash\.sfc' 'Cash $HOME `id`.sfc' 'game%U.sfc' $'evil\nExec=touch-pwned.sfc' terminal-newline.sfc\n'; do
+for rom in 'My "Best" Game.sfc' 'back\slash\.sfc' 'Cash $HOME `id`.sfc' 'game%U.sfc' $'evil\nExec=touch-pwned.sfc' $'terminal-newline.sfc\n'; do
   rm -f "$apps"/*.desktop "$workdir/argv"
   touch "$workdir/roms/$rom"
   install_game "$workdir/roms/$rom"
