@@ -42,6 +42,28 @@ XDG_RUNTIME_DIR="$t" "$lock_bin" run true || fail "update-lock runs a command un
 XDG_RUNTIME_DIR="$t" "$lock_bin" held && fail "lock is not held outside run"
 pass "update-lock normal acquire/run/held behavior is unchanged"
 
+# XDG_RUNTIME_DIR is only safe when owned and private; a user-provided
+# shared directory or a symlink must not be accepted as a lock directory.
+shared_runtime="$t/shared-runtime"
+mkdir -m 700 "$shared_runtime"
+chmod 777 "$shared_runtime"
+if XDG_RUNTIME_DIR="$shared_runtime" "$lock_bin" run true 2>"$t/shared-err"; then
+  fail "update-lock rejects a world-writable runtime directory"
+fi
+[[ ! -e "$shared_runtime/omarchy-update.lock" ]] ||
+  fail "rejected runtime directory never receives a lock file"
+grep -q "private ownership/mode" "$t/shared-err" ||
+  fail "rejected runtime directory gives a useful diagnostic"
+chmod 700 "$shared_runtime"
+XDG_RUNTIME_DIR="$shared_runtime" "$lock_bin" run true ||
+  fail "a private runtime directory still admits the update lock"
+runtime_link="$t/runtime-link"
+ln -s "$shared_runtime" "$runtime_link"
+if XDG_RUNTIME_DIR="$runtime_link" "$lock_bin" run true 2>"$t/runtime-link-err"; then
+  fail "update-lock rejects a symlinked runtime directory"
+fi
+pass "runtime lock location requires private ownership and mode"
+
 # Run fallback checks with a test-only copy of the helper. Never delete or
 # replace the *live* /tmp/omarchy-lock-$UID directory: a running update could
 # hold that lock, and unlinking it would defeat mutual exclusion.
@@ -64,6 +86,24 @@ fi
 [[ -f $fallback_dir/omarchy-update.lock ]] || fail "fallback lock file is created in the private dir"
 [[ $(stat -c %a "$fallback_dir") == "700" ]] || fail "fallback lock dir is mode 700" "$(stat -c %a "$fallback_dir")"
 pass "update-lock falls back to a private per-UID lock directory"
+
+# A failed chmod on a pre-existing fallback directory must never be
+# ignored: leaving it world-writable makes the lock-path check racy.
+chmod 777 "$fallback_dir"
+chmod_stub="$t/failing-chmod"
+mkdir -p "$chmod_stub"
+printf '#!/bin/bash\nexit 1\n' >"$chmod_stub/chmod"
+chmod +x "$chmod_stub/chmod"
+if env -u XDG_RUNTIME_DIR PATH="$chmod_stub:$fallback_path" "$lock_bin" run true 2>"$t/chmod-err"; then
+  fail "update-lock rejects an unprotected inherited fallback directory"
+fi
+grep -q "cannot protect fallback lock directory" "$t/chmod-err" ||
+  fail "failed fallback chmod gives a useful diagnostic"
+[[ $(stat -c %a "$fallback_dir") == "777" ]] ||
+  fail "failed chmod scenario preserves fixture's original mode"
+rm -f "$chmod_stub/chmod"
+chmod 700 "$fallback_dir"
+pass "failed fallback chmod blocks lock acquisition"
 
 # A planted symlink at the fallback directory itself must be refused, not
 # followed: following it would hand us an attacker-chosen location.
