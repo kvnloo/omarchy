@@ -87,9 +87,15 @@ pass "two empty-slug ROMs keep separate entries"
 rm -f "$apps"/*.desktop
 touch "$workdir/roms/!!!.sfc"
 install_game "$workdir/roms/!!!.sfc"
+absolute_desktop_files=("$apps"/*.desktop)
+(( ${#absolute_desktop_files[@]} == 1 )) || fail "absolute ROM install creates one launcher"
+# A successful exit alone is insufficient: the relative install must recreate
+# the launcher with the same canonical id and an absolute Exec target.
+rm -f "$apps"/*.desktop
 (cd "$workdir" && install_game "roms/!!!.sfc") || fail "relative ROM install succeeds"
 desktop_files=("$apps"/*.desktop)
 (( ${#desktop_files[@]} == 1 )) || fail "absolute and relative ROM paths use one launcher" "$(ls "$apps")"
+[[ ${desktop_files[0]} == "${absolute_desktop_files[0]}" ]] || fail "relative install reuses the canonical launcher id"
 exec_line=$(grep '^Exec=' "${desktop_files[0]}")
 [[ $exec_line == *"$workdir/roms/!!!.sfc"* ]] || fail "launcher Exec stores the canonical ROM path" "$exec_line"
 pass "absolute and relative ROM paths share a working launcher"
