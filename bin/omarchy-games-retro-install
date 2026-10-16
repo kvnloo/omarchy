@@ -35,6 +35,11 @@ if [[ ! -f $game_path ]]; then
   exit 1
 fi
 
+# A desktop launcher may run from any working directory. Preserve the
+# supplied filename for its label, but use one canonical path for Exec and ID.
+game_name_path="$game_path"
+game_path=$(realpath -e -- "$game_path")
+
 if [[ $core == */* ]]; then
   core_path="$core"
 else
@@ -75,12 +80,12 @@ desktop_string_escape() {
   printf '%s' "$value"
 }
 
-game_name=$(printf '%s' "${game_path##*/}" | sed 's/\.[^.]*$//; s/[[:space:]]*([^)]*)//g; s/[[:space:]]\+/ /g; s/^ //; s/ $//' | perl -Mopen=locale -pe 's/(^|[[:space:]])([^[:space:]])/$1\U$2/g')
+game_name=$(printf '%s' "${game_name_path##*/}" | sed 's/\.[^.]*$//; s/[[:space:]]*([^)]*)//g; s/[[:space:]]\+/ /g; s/^ //; s/ $//' | perl -Mopen=locale -pe 's/(^|[[:space:]])([^[:space:]])/$1\U$2/g')
 
 # A name that cleans to nothing (e.g. "(Europe).sfc") still needs a real
 # Name= and file stem; fall back to the raw filename.
 if [[ -z $game_name ]]; then
-  game_name="${game_path##*/}"
+  game_name="${game_name_path##*/}"
 fi
 
 desktop_name="$game_name"
