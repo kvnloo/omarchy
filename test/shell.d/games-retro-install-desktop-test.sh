@@ -87,7 +87,7 @@ pass "two empty-slug ROMs keep separate entries"
 rm -f "$apps"/*.desktop
 touch "$workdir/roms/!!!.sfc"
 install_game "$workdir/roms/!!!.sfc"
-(cd "$workdir" && install_game "roms/!!!.sfc")
+(cd "$workdir" && install_game "roms/!!!.sfc") || fail "relative ROM install succeeds"
 desktop_files=("$apps"/*.desktop)
 (( ${#desktop_files[@]} == 1 )) || fail "absolute and relative ROM paths use one launcher" "$(ls "$apps")"
 exec_line=$(grep '^Exec=' "${desktop_files[0]}")
@@ -104,10 +104,31 @@ grep -qxF 'Name=Super Game' "$apps/super-game.desktop" || fail "ordinary ROM kee
 pass "ordinary ROM keeps the plain .desktop shape"
 
 # 6. Launched through GLib, as gtk-launch does, retroarch gets the exact ROM path.
+# This includes a ROM path ending in a literal newline (realpath output must not strip it).
 printf '#!/bin/bash\nprintf "%%s\\0" "$@" >"%s/argv"\n' "$workdir" >"$workdir/stubs/retroarch"
 chmod +x "$workdir/stubs/retroarch"
 
-for rom in 'My "Best" Game.sfc' 'back\slash\.sfc' 'Cash $HOME `id`.sfc' 'game%U.sfc' $'evil\nExec=touch-pwned.sfc'; do
+for rom in 'My "Best" Game.sfc' 'back\slash\.sfc' 'Cash $HOME `id`.sfc' 'game%U.sfc' 
+  rm -f "$apps"/*.desktop "$workdir/argv"
+  touch "$workdir/roms/$rom"
+  install_game "$workdir/roms/$rom"
+  PATH="$workdir/stubs:/usr/bin:/bin" gio launch "$apps"/*.desktop || fail "GLib loads the entry for $(printf '%q' "$rom")"
+  for _ in {1..50}; do [[ -s $workdir/argv ]] && break; sleep 0.1; done
+  mapfile -d '' -t argv <"$workdir/argv"
+  [[ ${argv[2]} == "$workdir/roms/$rom" ]] || fail "launch passes the exact ROM path for $(printf '%q' "$rom")" "${argv[2]}"
+done
+pass "launched entries pass the exact ROM path to retroarch"
+evil\nExec=touch-pwned.sfc' 
+  rm -f "$apps"/*.desktop "$workdir/argv"
+  touch "$workdir/roms/$rom"
+  install_game "$workdir/roms/$rom"
+  PATH="$workdir/stubs:/usr/bin:/bin" gio launch "$apps"/*.desktop || fail "GLib loads the entry for $(printf '%q' "$rom")"
+  for _ in {1..50}; do [[ -s $workdir/argv ]] && break; sleep 0.1; done
+  mapfile -d '' -t argv <"$workdir/argv"
+  [[ ${argv[2]} == "$workdir/roms/$rom" ]] || fail "launch passes the exact ROM path for $(printf '%q' "$rom")" "${argv[2]}"
+done
+pass "launched entries pass the exact ROM path to retroarch"
+terminal-newline.sfc\n'; do
   rm -f "$apps"/*.desktop "$workdir/argv"
   touch "$workdir/roms/$rom"
   install_game "$workdir/roms/$rom"
