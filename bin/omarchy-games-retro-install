@@ -38,7 +38,12 @@ fi
 # A desktop launcher may run from any working directory. Preserve the
 # supplied filename for its label, but use one canonical path for Exec and ID.
 game_name_path="$game_path"
-game_path=$(realpath -e -- "$game_path")
+# Command substitution would strip terminal newlines from a valid ROM name.
+# GNU realpath -z and Bash's NUL-delimited read preserve the whole path.
+if ! IFS= read -r -d '' game_path < <(realpath -e -z -- "$game_path"); then
+  echo "Could not resolve game path: $game_name_path" >&2
+  exit 1
+fi
 
 if [[ $core == */* ]]; then
   core_path="$core"
