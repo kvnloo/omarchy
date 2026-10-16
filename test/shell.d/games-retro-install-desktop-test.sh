@@ -82,6 +82,18 @@ desktop_count=$(ls "$apps"/*.desktop | wc -l)
 (( desktop_count == 2 )) || fail "two empty-slug ROMs keep separate entries" "$(ls "$apps")"
 pass "two empty-slug ROMs keep separate entries"
 
+# 4c. The same ROM installed with a relative path must update the same
+# launcher, whose Exec argument is an absolute path usable from any cwd.
+rm -f "$apps"/*.desktop
+touch "$workdir/roms/!!!.sfc"
+install_game "$workdir/roms/!!!.sfc"
+(cd "$workdir" && install_game "roms/!!!.sfc")
+desktop_files=("$apps"/*.desktop)
+(( ${#desktop_files[@]} == 1 )) || fail "absolute and relative ROM paths use one launcher" "$(ls "$apps")"
+exec_line=$(grep '^Exec=' "${desktop_files[0]}")
+[[ $exec_line == *"$workdir/roms/!!!.sfc"* ]] || fail "launcher Exec stores the canonical ROM path" "$exec_line"
+pass "absolute and relative ROM paths share a working launcher"
+
 # 5. Ordinary names are byte-identical to the old output shape.
 rm -f "$apps"/*.desktop
 touch "$workdir/roms/Super Game (USA).sfc"
