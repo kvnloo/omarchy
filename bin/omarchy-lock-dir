@@ -13,7 +13,18 @@
 set -euo pipefail
 
 if [[ -n ${XDG_RUNTIME_DIR:-} ]]; then
-  printf '%s\n' "$XDG_RUNTIME_DIR"
+  dir="$XDG_RUNTIME_DIR"
+  if [[ ! -d $dir || -L $dir ]]; then
+    echo "omarchy-lock-dir: refusing non-directory runtime location: $dir" >&2
+    exit 1
+  fi
+  owner=$(stat -c %u "$dir" 2>/dev/null || true)
+  mode=$(stat -c %a "$dir" 2>/dev/null || true)
+  if [[ $owner != "$UID" || $mode != "700" ]]; then
+    echo "omarchy-lock-dir: refusing runtime directory without private ownership/mode: $dir" >&2
+    exit 1
+  fi
+  printf '%s\n' "$dir"
   exit 0
 fi
 
@@ -39,7 +50,16 @@ if [[ $owner != "$UID" ]]; then
   exit 1
 fi
 
-# Harden a directory we inherited from an earlier run.
-chmod 700 "$dir" 2>/dev/null || true
+# Harden any directory inherited from a prior run; failed chmod must not
+# return an attacker-writable location as a trustworthy lock directory.
+if ! chmod 700 "$dir" 2>/dev/null; then
+  echo "omarchy-lock-dir: cannot protect fallback lock directory: $dir" >&2
+  exit 1
+fi
+mode=$(stat -c %a "$dir" 2>/dev/null || true)
+if [[ $mode != "700" ]]; then
+  echo "omarchy-lock-dir: refusing fallback directory without mode 700: $dir" >&2
+  exit 1
+fi
 
 printf '%s\n' "$dir"
