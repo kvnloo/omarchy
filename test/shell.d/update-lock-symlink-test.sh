@@ -52,8 +52,8 @@ helper=$(<"$ROOT/bin/omarchy-lock-dir")
 fallback_statement='dir="/tmp/omarchy-lock-$UID"'
 [[ $helper == *"$fallback_statement"* ]] ||
   fail "fixture finds the expected fallback path in the current helper"
-replacement="dir=\\\"$fallback_dir\\\""
-printf '%s\\n' "${helper/"$fallback_statement"/$replacement}" >"$helper_dir/omarchy-lock-dir"
+replacement="dir=\"$fallback_dir\""
+printf '%s\n' "${helper/"$fallback_statement"/$replacement}" >"$helper_dir/omarchy-lock-dir"
 chmod +x "$helper_dir/omarchy-lock-dir"
 [[ $(<"$helper_dir/omarchy-lock-dir") != *"$fallback_statement"* ]] ||
   fail "fixture isolates fallback lock directory"
