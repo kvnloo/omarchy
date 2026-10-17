@@ -68,6 +68,10 @@ assert(
   /function onActivePopoutChanged\(\) \{\s*if \(root\.bar\.activePopout\) root\.trayMenuPending = false/.test(opener),
   'another bar popup cancels a pending tray click'
 )
+assert(
+  /target: SystemTray\.items\s*function onValuesChanged\(\) \{\s*if \(SystemTray\.items\.values\.indexOf\(root\.activeTrayItem\) !== -1\) return\s*if \(root\.trayMenuOpen\) root\.close\(\)\s*else root\.trayMenuPending = false/.test(opener),
+  'an item leaving the whole tray closes its open menu, or cancels its pending click'
+)
 
 const closeFn = source.slice(
   source.indexOf('function close()'),

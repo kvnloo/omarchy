@@ -596,6 +596,17 @@ BarWidget {
     function onValuesChanged() { Qt.callLater(root.syncTrayMenuOpen) }
   }
 
+  // An app re-registering its tray item while it starts up takes the open menu's item
+  // with it; close the card rather than leave it empty and holding the focus grab.
+  Connections {
+    target: SystemTray.items
+    function onValuesChanged() {
+      if (SystemTray.items.values.indexOf(root.activeTrayItem) !== -1) return
+      if (root.trayMenuOpen) root.close()
+      else root.trayMenuPending = false
+    }
+  }
+
   // A menu that never loads must not open long after the click was abandoned.
   Timer {
     id: trayMenuPendingTimer
