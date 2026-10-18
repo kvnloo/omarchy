@@ -111,7 +111,7 @@ status=$?
 set -e
 (( status == 1 )) || fail "two-device extra LUKS exits 1" "status=$status"
 [[ -z $(<"$test_tmp/out") ]] || fail "two-device extra LUKS is silent on stdout"
-grep -q "root Btrfs spans extra LUKS devices" "$test_tmp/err" ||
+grep -q "root Btrfs spans separate LUKS-backed devices" "$test_tmp/err" ||
   fail "two-device extra LUKS prints a warning" "$(<"$test_tmp/err")"
 pass "two-device extra LUKS warns and exits 1"
 
@@ -188,6 +188,6 @@ TEST_SOURCE=/dev/dm-0 TEST_BTRFS_SHOW="$two_device_show" run_helper
 status=$?
 set -e
 (( status == 1 )) || fail "aliased root still warns on extra LUKS" "status=$status"
-grep -q "root Btrfs spans extra LUKS devices" "$test_tmp/err" ||
+grep -q "root Btrfs spans separate LUKS-backed devices" "$test_tmp/err" ||
   fail "aliased root still prints the extra-LUKS warning"
 pass "aliased root still warns on extra LUKS"
