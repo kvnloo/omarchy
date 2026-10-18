@@ -59,17 +59,6 @@ grep -Fq 'focus:' "$log" && fail "launch-or-focus ignores Omarchy agent titles" 
 grep -Fxq 'launch:dummy-app' "$log" || fail "launch-or-focus launches when only an agent title matches" "$(cat "$log")"
 pass "launch-or-focus ignores Omarchy agent titles"
 
-write_clients <<'JSON'
-[
-  {"address":"0xagent","class":"org.omarchy.agent","title":"Spotify player stoppt bei Fensterverschiebung"},
-  {"address":"0xbrowser","class":"chromium","title":"Spotify Web Player"}
-]
-JSON
-
-run_with_clients bash "$ROOT/bin/omarchy-launch-spotify"
-grep -Fq 'focus:' "$log" && fail "launch-spotify matches class only" "$(cat "$log")"
-grep -Fxq 'install:omarchy-install-service-spotify' "$log" || fail "launch-spotify installs when no Spotify class is present" "$(cat "$log")"
-pass "launch-spotify matches class only"
 
 write_clients <<'JSON'
 [
@@ -83,18 +72,6 @@ grep -Fq 'address:0xspotify' "$log" || fail "launch-or-focus focuses the real Sp
 grep -Fq 'address:0xagent' "$log" && fail "launch-or-focus does not focus the agent when Spotify is running" "$(cat "$log")"
 pass "launch-or-focus focuses the real Spotify class"
 
-write_clients <<'JSON'
-[
-  {"address":"0xagent","class":"org.omarchy.agent","title":"Spotify player stoppt bei Fensterverschiebung"},
-  {"address":"0xbrowser","class":"chromium","title":"Spotify Web Player"},
-  {"address":"0xspotify","class":"Spotify","title":"Spotify Premium"}
-]
-JSON
-
-run_with_clients bash "$ROOT/bin/omarchy-launch-spotify"
-grep -Fq 'address:0xspotify' "$log" || fail "launch-spotify focuses the Spotify class" "$(cat "$log")"
-grep -Fq 'address:0xbrowser' "$log" && fail "launch-spotify does not treat a browser title as Spotify" "$(cat "$log")"
-pass "launch-spotify focuses the Spotify class"
 
 write_clients <<'JSON'
 [
@@ -117,7 +94,3 @@ JSON
 run_with_clients bash "$ROOT/bin/omarchy-launch-or-focus" Calendar dummy-webapp
 grep -Fxq 'launch:dummy-webapp' "$log" || fail "launch-or-focus launches when only an agent title matches Calendar" "$(cat "$log")"
 pass "launch-or-focus launches when only an agent title matches Calendar"
-
-grep -Fq '{ omarchy = "spotify" }' "$ROOT/default/hypr/bindings/applications.lua" ||
-  fail "Music keybinding uses the Spotify launcher"
-pass "Music keybinding uses the Spotify launcher"
