@@ -782,7 +782,7 @@ assert(
   'notifications service refreshes the popup from every property the card draws'
 )
 assert(
-  /popupModel\.setProperty\(i, roles\[r\], updated\[roles\[r\]\]\)[\s\S]{0,600}?persistPopupFile\(updated\)/.test(serviceQml),
+  /popupModel\.setProperty\(i, roles\[r\], updated\[roles\[r\]\]\)[\s\S]{0,750}?var lifetime = durationFor\(updated\.urgency, updated\.expireTimeout\)[\s\S]{0,150}?persistPopupFile\(NotificationLogic\.renewedPopupFileEntry\(updated, lifetime, Date\.now\(\)\)\)/.test(serviceQml),
   'notifications service rewrites both the row and its file when a notification is updated in place'
 )
 assert(
