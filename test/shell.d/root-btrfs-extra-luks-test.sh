@@ -62,6 +62,7 @@ exit 1
 '
 
 write_stub lsblk '
+# List mode suppresses tree prefixes that otherwise change ancestor names.
 device=${*: -1}
 case $device in
   /dev/mapper/root|/dev/dm-0)
@@ -74,7 +75,11 @@ case $device in
     ;;
   /dev/mapper/extra-same)
     printf "/dev/mapper/extra-same btrfs\n"
-    printf "/dev/nvme0n1p2 crypto_LUKS\n"
+    if [[ ${1:-} == "-nslpo" ]]; then
+      printf "/dev/nvme0n1p2 crypto_LUKS\n"
+    else
+      printf "└─/dev/nvme0n1p2 crypto_LUKS\n"
+    fi
     ;;
   /dev/sdb)
     printf "/dev/sdb btrfs\n"
