@@ -263,10 +263,12 @@ Item {
       if (!row || row.originalId !== originalId || row.timestamp !== timestamp) continue
       if (!NotificationLogic.popupRowChanged(row, updated)) return
       for (var r = 0; r < roles.length; r++) popupModel.setProperty(i, roles[r], updated[roles[r]])
-      // The file name is the timestamp and id this popup was persisted under,
-      // so the rewrite lands on the same file: a restart restores the version
-      // last shown, and so does the copy that ends up in history.
-      persistPopupFile(updated)
+      // The file name remains the original timestamp and id. The replacement
+      // starts the on-screen timer over, so persist its renewed deadline too;
+      // otherwise restore would compare against the old timestamp and archive
+      // the replacement while it is still visible.
+      var lifetime = durationFor(updated.urgency, updated.expireTimeout)
+      persistPopupFile(NotificationLogic.renewedPopupFileEntry(updated, lifetime, Date.now()))
       return
     }
   }
@@ -1034,6 +1036,7 @@ Item {
             required property string body
             required property string image
             required property string glyph
+            required property string execArgv
             required property int urgency
             required property double expireTimeout
             required property double timestamp
@@ -1048,17 +1051,17 @@ Item {
             property real remainingLifetime: 1.0
             readonly property bool ticking: cardSlot.lifetime > 0 && !card.hovered
 
-            // A client updating this notification in place rewrites the row
-            // under the card (see refreshPopup). New text deserves a full look,
-            // so the countdown starts over instead of running out the clock the
-            // superseded text was already most of the way through. Delegates
-            // keep their own row as the model changes around them, so only a
-            // real content change lands here.
+            // Every in-place model update renews the persisted lifetime (in
+            // refreshPopup), so restart the visible countdown on the same
+            // changes. This includes timeout-only, icon-only, and action-only
+            // replacements, not just text changes.
+            onAppChanged: cardSlot.remainingLifetime = 1.0
+            onAppIconChanged: cardSlot.remainingLifetime = 1.0
             onSummaryChanged: cardSlot.remainingLifetime = 1.0
             onBodyChanged: cardSlot.remainingLifetime = 1.0
             onImageChanged: cardSlot.remainingLifetime = 1.0
-            // replaces_id may only change the timeout or urgency. Give the
-            // renewed lifetime its full duration, even if text is unchanged.
+            onGlyphChanged: cardSlot.remainingLifetime = 1.0
+            onExecArgvChanged: cardSlot.remainingLifetime = 1.0
             onExpireTimeoutChanged: cardSlot.remainingLifetime = 1.0
             onUrgencyChanged: cardSlot.remainingLifetime = 1.0
 
