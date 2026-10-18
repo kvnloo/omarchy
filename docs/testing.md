@@ -119,6 +119,7 @@ only a live session can prove.
   executables (`sudo`, `tmux`, `gsettings`, helper commands) that log their
   arguments to a file, prepend it to `PATH`, and then run the real script
   under test. Assertions grep the call log and the files the script wrote.
+  Menu CLI fixtures must also finish the file-based reply protocol: write the selection to `selectionFile`, then create `doneFile`, and assert the command exits zero with the expected selection on stdout. A timeout is a failure bound, not evidence of a successful menu interaction; this fixture coverage does not replace a live Quickshell session.
 - **Fake `$HOME`, real `$OMARCHY_PATH`.** Anything touching user state runs
   with `HOME` pointed at a `mktemp -d` directory (cleaned up via
   `trap ... EXIT`) and `OMARCHY_PATH="$ROOT"`, so tests exercise the checkout
