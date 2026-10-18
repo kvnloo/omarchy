@@ -32,6 +32,36 @@ grep -Fq '<string>ui-monospace</string>' "$fonts_conf" || fail "fontconfig keeps
 ! grep -Fq '<string>monospace</string>' "$fonts_conf" || fail "fontconfig test must not match the monospace generic directly"
 pass "font set writes a first-family test against the packaged monospace default"
 
+# Exercise Fontconfig's actual pattern substitution as well as the emitted XML.
+# fc-pattern does not require the chosen test font to be installed. Escape the
+# hyphen in ui-monospace or Fontconfig parses it as family "ui" + size suffix.
+if command -v fc-pattern >/dev/null 2>&1; then
+  config_fixture="$test_dir/fontconfig-test.conf"
+  cat >"$config_fixture" <<XML
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <include>$ROOT/default/fontconfig/conf.avail/50-omarchy.conf</include>
+  <include>$fonts_conf</include>
+</fontconfig>
+XML
+
+  first_family() {
+    FONTCONFIG_FILE="$config_fixture" fc-pattern -c -f '%{family}\n' "$1" |
+      cut -d, -f1
+  }
+
+  [[ $(first_family monospace) == "Sarasa Mono SC" ]] ||
+    fail "generic monospace must select the chosen font"
+  [[ $(first_family 'ui\\-monospace') == "Sarasa Mono SC" ]] ||
+    fail "ui-monospace must select the chosen font"
+  [[ $(first_family 'Noto Sans Mono') == "Noto Sans Mono" ]] ||
+    fail "explicit named mono font must not be remapped"
+  pass "Fontconfig substitutions preserve named fonts and override generic/ UI monospace"
+else
+  skip "Fontconfig pattern checks require fc-pattern"
+fi
+
 # A custom packaged default should be read at write time rather than hard-coded.
 custom_root="$test_dir/custom-omarchy"
 mkdir -p "$custom_root/default/fontconfig/conf.avail"
