@@ -1061,9 +1061,6 @@ Item {
             // renewed lifetime its full duration, even if text is unchanged.
             onExpireTimeoutChanged: cardSlot.remainingLifetime = 1.0
             onUrgencyChanged: cardSlot.remainingLifetime = 1.0
-            // Timeout-only and urgency-only replacements also get a full countdown.
-            onUrgencyChanged: cardSlot.remainingLifetime = 1.0
-            onExpireTimeoutChanged: cardSlot.remainingLifetime = 1.0
 
             Timer {
               interval: 50
