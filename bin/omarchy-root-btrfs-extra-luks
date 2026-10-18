@@ -21,7 +21,9 @@ if [[ -z $src ]]; then
   exit 0
 fi
 
-show=$(btrfs filesystem show / 2>/dev/null) || exit 0
+# The update command holds a sudo timestamp, but this helper runs as the
+# desktop user. Probe non-interactively so a direct call never prompts.
+show=$(sudo -n btrfs filesystem show / 2>/dev/null) || exit 0
 
 members=()
 while IFS= read -r line; do
@@ -59,7 +61,7 @@ for member in "${members[@]}"; do
 done
 
 if (( extra_luks )); then
-  echo -e '\e[33mWarning: root Btrfs spans extra LUKS devices the initramfs cannot unlock. Stock encrypt opens only cryptdevice=, so the next reboot will drop to initramfs. Remove the extra member before rebooting.\e[0m' >&2
+  echo -e '\e[33mWarning: root Btrfs spans separate LUKS-backed devices. Verify that the active initramfs unlocks every Btrfs member before rebooting; custom sd-encrypt or crypttab setups may already do so.\e[0m' >&2
   exit 1
 fi
 
