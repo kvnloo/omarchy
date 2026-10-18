@@ -1057,6 +1057,10 @@ Item {
             onSummaryChanged: cardSlot.remainingLifetime = 1.0
             onBodyChanged: cardSlot.remainingLifetime = 1.0
             onImageChanged: cardSlot.remainingLifetime = 1.0
+            // replaces_id may only change the timeout or urgency. Give the
+            // renewed lifetime its full duration, even if text is unchanged.
+            onExpireTimeoutChanged: cardSlot.remainingLifetime = 1.0
+            onUrgencyChanged: cardSlot.remainingLifetime = 1.0
             // Timeout-only and urgency-only replacements also get a full countdown.
             onUrgencyChanged: cardSlot.remainingLifetime = 1.0
             onExpireTimeoutChanged: cardSlot.remainingLifetime = 1.0
