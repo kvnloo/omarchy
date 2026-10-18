@@ -29,21 +29,19 @@ if [[ ${1:-} == "--watch" ]]; then
     exit 1
   }
   socket="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
-  socat -U - "UNIX-CONNECT:$socket" | while IFS= read -r event; do
-    [[ -n $event ]] || continue
-    if [[ $event == *">>"* ]]; then
-      kind=${event%%>>*}
-      data=${event#*>>}
-    else
-      kind="unknown"
-      data=$event
-    fi
-    jq -cn \
-      --arg schema "omarchy.desktop-event.v1" \
-      --arg event "$kind" \
-      --arg data "$data" \
-      '{schema: $schema, type: "invalidate", event: $event, data: $data}'
-  done
+  # One unbuffered jq reader avoids spawning a process per Hyprland event.
+  # pipefail still reports socat socket errors to the caller.
+  socat -U - "UNIX-CONNECT:$socket" | jq -Rcn --unbuffered '
+    inputs | select(length > 0)
+    | . as $line
+    | ($line | index(">>")) as $boundary
+    | {
+        schema: "omarchy.desktop-event.v1",
+        type: "invalidate",
+        event: (if $boundary == null then "unknown" else $line[:$boundary] end),
+        data: (if $boundary == null then $line else $line[($boundary + 2):] end)
+      }
+  '
   exit 0
 elif (($# != 0)); then
   echo "Usage: omarchy desktop state [--watch]" >&2

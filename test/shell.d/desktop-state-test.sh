@@ -32,7 +32,10 @@ if [[ ${OMARCHY_TEST_SOCAT_STATUS:-0} != 0 ]]; then
 fi
 printf '%s\n' \
   'openwindow>>0xabc,1,foot,Agent' \
-  'monitoraddedv2>>1,DP-1,Secondary'
+  'monitoraddedv2>>1,DP-1,Secondary' \
+  'workspace>>alpha>>beta' \
+  'unparsed-event' \
+  ''
 SH
 chmod +x "$mock_bin/socat"
 
@@ -130,12 +133,16 @@ events=$(
 )
 
 jq -s -e '
-  length == 2
+  length == 4
   and .[0].schema == "omarchy.desktop-event.v1"
   and .[0].type == "invalidate"
   and .[0].event == "openwindow"
   and .[0].data == "0xabc,1,foot,Agent"
   and .[1].event == "monitoraddedv2"
+  and .[2].event == "workspace"
+  and .[2].data == "alpha>>beta"
+  and .[3].event == "unknown"
+  and .[3].data == "unparsed-event"
 ' <<<"$events" >/dev/null || fail "desktop state watch normalizes Hyprland invalidation events"
 
 pass "desktop state watch exposes compositor invalidations without polling"
