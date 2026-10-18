@@ -62,17 +62,17 @@ if [[ -r $default_mono_conf ]]; then
     awk '
       /<match target="pattern">/ { in_match=1; family_test=0; is_mono=0; assign=0 }
       in_match && /<test name="family" qual="any">/ { family_test=1 }
-      in_match && family_test && /<string>monospace<\\/string>/ { is_mono=1 }
-      /<\\/test>/ { family_test=0 }
+      in_match && family_test && /<string>monospace<\/string>/ { is_mono=1 }
+      /<\/test>/ { family_test=0 }
       in_match && /<edit name="family" mode="assign"/ { assign=1 }
-      in_match && is_mono && assign && /<string>[^<]+<\\/string>/ {
+      in_match && is_mono && assign && /<string>[^<]+<\/string>/ {
         sub(/.*<string>/, "")
-        sub(/<\\/string>.*/, "")
+        sub(/<\/string>.*/, "")
         print
         exit
       }
-      /<\\/edit>/ { assign=0 }
-      /<\\/match>/ { in_match=0 }
+      /<\/edit>/ { assign=0 }
+      /<\/match>/ { in_match=0 }
     ' "$default_mono_conf"
   )
   [[ -n $extracted ]] && default_mono_family=$extracted
