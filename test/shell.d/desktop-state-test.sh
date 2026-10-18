@@ -27,6 +27,9 @@ chmod +x "$mock_bin/hyprctl"
 
 cat >"$mock_bin/socat" <<'SH'
 #!/bin/bash
+if [[ ${OMARCHY_TEST_SOCAT_STATUS:-0} != 0 ]]; then
+  exit "$OMARCHY_TEST_SOCAT_STATUS"
+fi
 printf '%s\n' \
   'openwindow>>0xabc,1,foot,Agent' \
   'monitoraddedv2>>1,DP-1,Secondary'
@@ -136,3 +139,19 @@ jq -s -e '
 ' <<<"$events" >/dev/null || fail "desktop state watch normalizes Hyprland invalidation events"
 
 pass "desktop state watch exposes compositor invalidations without polling"
+
+# A dropped or missing Hyprland event socket is not an empty successful watch.
+# Using process substitution loses socat's exit status even under pipefail.
+watch_status=0
+watch_output=$(
+  PATH="$mock_bin:$PATH" \
+    XDG_RUNTIME_DIR="$test_tmp/runtime" \
+    HYPRLAND_INSTANCE_SIGNATURE="fixture-instance" \
+    OMARCHY_TEST_SOCAT_STATUS=47 \
+    "$ROOT/bin/omarchy-desktop-state" --watch
+) || watch_status=$?
+(( watch_status == 47 )) ||
+  fail "desktop watch propagates a socket connection failure" "status=$watch_status"
+[[ -z $watch_output ]] ||
+  fail "desktop watch does not emit phantom events after socket failure"
+pass "desktop state watch fails closed when the Hyprland event stream is unavailable"

@@ -29,7 +29,7 @@ if [[ ${1:-} == "--watch" ]]; then
     exit 1
   }
   socket="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
-  while IFS= read -r event; do
+  socat -U - "UNIX-CONNECT:$socket" | while IFS= read -r event; do
     [[ -n $event ]] || continue
     if [[ $event == *">>"* ]]; then
       kind=${event%%>>*}
@@ -43,7 +43,7 @@ if [[ ${1:-} == "--watch" ]]; then
       --arg event "$kind" \
       --arg data "$data" \
       '{schema: $schema, type: "invalidate", event: $event, data: $data}'
-  done < <(socat -U - "UNIX-CONNECT:$socket")
+  done
   exit 0
 elif (($# != 0)); then
   echo "Usage: omarchy desktop state [--watch]" >&2
