@@ -359,6 +359,42 @@ assertEqual(
   '12345-12.json',
   'notifications keep the persisted file name across an in-place update'
 )
+
+
+// A replaces_id update that arrives 38 seconds after the first alert must
+// survive a shell restart one second later when its new timeout is 10 seconds.
+// The file identity remains old; the deadline does not.
+const renewed = notifications.renewedPopupFileEntry(replacement, 10000, 50000)
+assertEqual(notifications.popupFileName(renewed), '12345-12.json', 'renewed popup keeps original file identity')
+assertEqual(renewed.timestamp, replacement.timestamp, 'renewal does not rewrite the original timestamp')
+assertEqual('deadline' in replacement, false, 'renewal does not mutate the live popup model entry')
+assertEqual(renewed.deadline, 60000, 'renewal persists a fresh absolute expiry')
+assert(
+  notifications.popupExpired(replacement, 10000, 51000),
+  'old timestamp would incorrectly expire a recently renewed notification'
+)
+const restartedRenewal = notifications.popupEntry(
+  JSON.parse(notifications.serializePopup(renewed, 1)), 1
+)
+assert(
+  !notifications.popupExpired(restartedRenewal, 10000, 51000),
+  'a replaced timed popup survives restart during its renewed lifetime'
+)
+assert(
+  notifications.popupExpired(restartedRenewal, 10000, 60000),
+  'renewed popup still expires at the new deadline'
+)
+const stickyReplacement = notifications.renewedPopupFileEntry(
+  Object.assign({}, renewed, { expireTimeout: 0 }), 0, 52000
+)
+assertEqual('deadline' in stickyReplacement, false, 'sticky replacement clears an earlier finite deadline')
+assert(
+  !notifications.popupExpired(
+    notifications.popupEntry(JSON.parse(notifications.serializePopup(stickyReplacement, 1)), 1),
+    0, 100000
+  ),
+  'replacing a timed critical toast with a sticky one survives later restarts'
+)
 assert(
   !notifications.popupRowChanged(replacement, replacement),
   'notifications skip a refresh that matches the row it would write'
