@@ -33,29 +33,33 @@ fi
 
 # Never forward raw Hyprland JSON: it includes window titles, client IDs,
 # hardware identifiers and other unneeded values. Build an explicit allowlist.
-if ! snapshot=$(jq -cn --argjson monitors "$monitors" --argjson workspaces "$workspaces" '
-  if ($monitors | type) != "array" or ($workspaces | type) != "array" then
-    error("unexpected Hyprland shape")
-  else
-    {
-      schemaVersion: 1,
-      monitors: ($monitors | map({
-        name: (.name // ""),
-        focused: (.focused == true),
-        activeWorkspace: {
-          id: (.activeWorkspace.id // null),
-          name: (.activeWorkspace.name // "")
-        }
-      })),
-      workspaces: ($workspaces | map({
-        id: (.id // null),
-        name: (.name // ""),
-        monitor: (.monitor // ""),
-        windows: (.windows // 0)
-      }))
-    }
-  end
-' 2>/dev/null); then
+if ! snapshot=$(
+  # Keep raw Hyprland JSON off argv (which other processes may inspect).
+  # jq reads the two source documents from stdin, and emits only the allowlist.
+  printf '%s\n%s\n' "$monitors" "$workspaces" | jq -cs '
+    if length != 2 or (.[0] | type) != "array" or (.[1] | type) != "array" then
+      error("unexpected Hyprland shape")
+    else
+      {
+        schemaVersion: 1,
+        monitors: (.[0] | map({
+          name: (.name // ""),
+          focused: (.focused == true),
+          activeWorkspace: {
+            id: (.activeWorkspace.id // null),
+            name: (.activeWorkspace.name // "")
+          }
+        })),
+        workspaces: (.[1] | map({
+          id: (.id // null),
+          name: (.name // ""),
+          monitor: (.monitor // ""),
+          windows: (.windows // 0)
+        }))
+      }
+    end
+  ' 2>/dev/null
+); then
   echo "omarchy-agent-context: invalid Hyprland response" >&2
   exit 1
 fi
