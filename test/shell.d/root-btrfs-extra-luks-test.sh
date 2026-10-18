@@ -52,6 +52,14 @@ case " $* " in
 esac
 '
 
+write_stub sudo '
+# The real update has authenticated sudo, but a standalone check must not prompt.
+[[ ${1:-} == "-n" && ${2:-} == "btrfs" ]] || exit 88
+shift 2
+[[ ${TEST_SUDO_DENY:-0} != 1 ]] || exit 1
+exec btrfs "$@"
+'
+
 write_stub btrfs '
 if [[ ${1:-} == "filesystem" && ${2:-} == "show" ]]; then
   printf "%s\n" "$TEST_BTRFS_SHOW"
@@ -106,6 +114,17 @@ set -e
 grep -q "root Btrfs spans extra LUKS devices" "$test_tmp/err" ||
   fail "two-device extra LUKS prints a warning" "$(<"$test_tmp/err")"
 pass "two-device extra LUKS warns and exits 1"
+
+# A missing sudo timestamp must not cause an interactive password prompt or
+# block the update diagnostics. The other tests require sudo's -n path.
+set +e
+TEST_SUDO_DENY=1 TEST_BTRFS_SHOW="$two_device_show" run_helper
+status=$?
+set -e
+(( status == 0 )) || fail "noninteractive sudo denial is fail-open" "status=$status"
+[[ -z $(<"$test_tmp/out") && -z $(<"$test_tmp/err") ]] ||
+  fail "sudo denial stays silent"
+pass "noninteractive sudo denial is fail-open and silent"
 
 set +e
 TEST_BTRFS_SHOW="$single_device_show" run_helper
