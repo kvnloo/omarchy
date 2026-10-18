@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# omarchy:summary=Show a minimal workspace snapshot for an explicitly invoked agent
+# omarchy:args=[--json]
+# omarchy:examples=omarchy agent context --json
+# omarchy:hidden=true
+
+set -euo pipefail
+
+if (( $# > 1 )) || { (( $# == 1 )) && [[ $1 != --json ]]; }; then
+  echo "Usage: omarchy agent context [--json]" >&2
+  exit 1
+fi
+
+# This command is deliberately invoked on demand; do not run it as a shell
+# service or send its output to a model without the user's request.
+for dependency in hyprctl jq timeout; do
+  if ! command -v "$dependency" >/dev/null; then
+    printf 'omarchy-agent-context: missing %s\n' "$dependency" >&2
+    exit 127
+  fi
+done
+
+if ! monitors=$(timeout 2s hyprctl -j monitors); then
+  echo "omarchy-agent-context: cannot read monitors" >&2
+  exit 1
+fi
+
+if ! workspaces=$(timeout 2s hyprctl -j workspaces); then
+  echo "omarchy-agent-context: cannot read workspaces" >&2
+  exit 1
+fi
+
+# Never forward raw Hyprland JSON: it includes window titles, client IDs,
+# hardware identifiers and other unneeded values. Build an explicit allowlist.
+if ! snapshot=$(jq -cn --argjson monitors "$monitors" --argjson workspaces "$workspaces" '
+  if ($monitors | type) != "array" or ($workspaces | type) != "array" then
+    error("unexpected Hyprland shape")
+  else
+    {
+      schemaVersion: 1,
+      monitors: ($monitors | map({
+        name: (.name // ""),
+        focused: (.focused == true),
+        activeWorkspace: {
+          id: (.activeWorkspace.id // null),
+          name: (.activeWorkspace.name // "")
+        }
+      })),
+      workspaces: ($workspaces | map({
+        id: (.id // null),
+        name: (.name // ""),
+        monitor: (.monitor // ""),
+        windows: (.windows // 0)
+      }))
+    }
+  end
+' 2>/dev/null); then
+  echo "omarchy-agent-context: invalid Hyprland response" >&2
+  exit 1
+fi
+
+printf '%s\n' "$snapshot"
