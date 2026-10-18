@@ -371,6 +371,14 @@ assert(
   !notifications.popupRowChanged(replacement, Object.assign({}, replacement, { timestamp: 999 })),
   'notifications ignore identity fields when deciding whether a refresh has work'
 )
+assert(
+  notifications.popupRowChanged(replacement, Object.assign({}, replacement, { expireTimeout: 7000 })),
+  'notifications refresh a row for a timeout-only replaces_id update'
+)
+assert(
+  notifications.popupRowChanged(replacement, Object.assign({}, replacement, { urgency: 1 })),
+  'notifications refresh a row when only urgency changes'
+)
 
 const heyReminder = { originalId: 20, app: 'Chromium', summary: 'Interview', body: 'Today, 11:00 AM' }
 assert(
@@ -644,6 +652,14 @@ assert(
 assert(
   /var floor = urgency === NotificationUrgency\.Low \? lowPopupDuration : normalPopupDuration\s*\n\s*return NotificationLogic\.popupDuration\(expireTimeout, urgency === NotificationUrgency\.Critical, floor, maxPopupDuration\)/.test(serviceQml),
   'notifications service times toasts by urgency through popupDuration'
+)
+assert(
+  /onExpireTimeoutChanged:\s*cardSlot\.remainingLifetime\s*=\s*1\.0/.test(serviceQml),
+  'notifications restart the countdown on timeout-only replacements'
+)
+assert(
+  /onUrgencyChanged:\s*cardSlot\.remainingLifetime\s*=\s*1\.0/.test(serviceQml),
+  'notifications restart the countdown when urgency changes the lifetime'
 )
 assert(
   /function showHistory\(\): string \{\s*return service\.showRecentHistory\(\)\s*\}/.test(serviceQml),
