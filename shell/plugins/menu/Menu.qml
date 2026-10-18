@@ -1346,7 +1346,16 @@ Item {
           } else if (event.key === Qt.Key_PageDown) {
             root.select(6)
             event.accepted = true
-          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || Util.readingKey(event) === Qt.Key_Right) {
+          } else if (Util.readingKey(event) === Qt.Key_Right) {
+            // Right only enters menus and links; it never executes actions or submits inputs.
+            if (!root.dmenuActive && root.cursorActive && root.rowSelectable(root.selectedIndex)) {
+              var row = displayModel.get(root.selectedIndex)
+              if (row.kind === "menu" || row.kind === "link") root.activateIndex(root.selectedIndex)
+            } else if (!root.dmenuActive && !root.cursorActive) {
+              root.settleCursor()
+            }
+            event.accepted = true
+          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
             if (root.dmenuActive) {
               if (root.mode === "input") root.applyDmenuSelection(root.filterText)
               else if (displayModel.count > 0) root.activateIndex(root.cursorActive ? root.selectedIndex : 0)
