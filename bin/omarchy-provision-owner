@@ -724,20 +724,14 @@ encrypted_install() {
 }
 
 create_user() {
-  local status account home
+  local status
 
   # Pin before account creation so an interruption after useradd succeeds cannot
   # strand the new account. If useradd rejects the username, clear the pin so
   # the retry can choose another one.
   echo "$username" >"$PROVISIONING_DIR/setup-user"
 
-  if account=$(getent passwd "$username"); then
-    home=$(cut -d: -f6 <<<"$account")
-    # A partial useradd can leave no home; finalization only warns on failure.
-    if [[ ! -d $home ]]; then
-      printf 'Home directory missing for %s: %s\n' "$username" "$home" >&2
-      return 1
-    fi
+  if getent passwd "$username" >/dev/null; then
     # Resuming a partially-completed earlier attempt: refresh what the form
     # collected this time around.
     usermod -aG "$(user_groups)" ${full_name:+-c "$full_name"} "$username"

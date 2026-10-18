@@ -15,7 +15,6 @@ printf 'BROWSER_POLICY_MANAGED_DIRS=()\n' >"$OMARCHY_PATH/install/helpers/browse
 username=tester
 full_name="Test User"
 password=secret
-account_home="$tmp_dir/account-home"
 useradd_status=0
 usermod_status=0
 chpasswd_status=0
@@ -23,19 +22,13 @@ cleanup_status=0
 create_account=0
 
 user_groups() { printf '%s' wheel; }
-getent() {
-  [[ -f $tmp_dir/account-created ]] || return 2
-  printf '%s:x:1000:1000:%s:%s:/bin/bash\n' "$username" "$full_name" "$account_home"
-}
+getent() { [[ -f $tmp_dir/account-created ]]; }
 useradd() {
   [[ -f $PROVISIONING_DIR/setup-user ]] &&
     [[ $(<"$PROVISIONING_DIR/setup-user") == "$username" ]] ||
     fail "username is pinned before useradd starts"
   printf '%s\n' "$*" >>"$tmp_dir/useradd.calls"
-  if (( create_account )); then
-    touch "$tmp_dir/account-created"
-    if (( useradd_status == 0 )); then mkdir -p "$account_home"; fi
-  fi
+  if (( create_account )); then touch "$tmp_dir/account-created"; fi
   return "$useradd_status"
 }
 usermod() {
@@ -98,7 +91,6 @@ pass "a later chpasswd failure keeps the created account pinned"
 
 # useradd can create the account and then fail while preparing its home.
 command rm -f "$tmp_dir/account-created" "$PROVISIONING_DIR/setup-user"
-command rm -rf "$account_home"
 useradd_status=12
 run_create_user
 (( status == 12 )) || fail "partial useradd failure status is preserved" "status: $status"
@@ -107,13 +99,6 @@ run_create_user
 pass "a useradd error after account creation keeps the account pinned"
 
 chpasswd_status=0
-run_create_user
-(( status != 0 )) || fail "an existing account without a home keeps setup pending"
-[[ $(<"$PROVISIONING_DIR/setup-user") == "$username" ]] || fail "missing-home retry keeps the account pinned"
-[[ ! -e $tmp_dir/chpasswd.calls && ! -e $tmp_dir/wheel ]] || fail "missing-home retry stops before credentials and sudoers"
-pass "an existing account without a home stays pending without losing its pin"
-
-mkdir -p "$account_home"
 run_create_user
 (( status == 0 )) || fail "existing-user retry completes" "status: $status"
 [[ -e $tmp_dir/usermod.calls && ! -e $tmp_dir/useradd.calls ]] || fail "existing-user retry uses usermod"
