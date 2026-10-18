@@ -5,9 +5,9 @@ set -euo pipefail
 source "$(dirname "$0")/base-test.sh"
 
 # omarchy-update used to hand script(1) the fixed path /tmp/omarchy-update.log.
-# A pre-planted symlink there redirected the whole update transcript into an
-# arbitrary file. The fix gives every run a private mktemp log and passes its
-# path to the logged run through OMARCHY_UPDATE_LOG_FILE.
+# That shared name could collide with another user's file and block updates.
+# Check that each update uses a unique private transcript, retains it for
+# diagnosis, and preserves exec/signal behavior without touching a live log.
 
 require_command script
 require_command mktemp
@@ -16,23 +16,18 @@ FIXED_UPDATE="$ROOT/bin/omarchy-update"
 FIXED_ANALYZE="$ROOT/bin/omarchy-update-analyze-logs"
 
 test_tmp=$(mktemp -d)
-trap 'rm -rf "$test_tmp"; rm -f /tmp/omarchy-update.log' EXIT
-mkdir -p "$test_tmp/bin" "$test_tmp/tmp"
-export TMPDIR="$test_tmp/tmp"
-
-# --- red mechanism: the base's exact open call follows a planted symlink ---
-# Base line (since replaced): script -qefc "$script_command" "/tmp/omarchy-update.log"
-victim="$test_tmp/victim.txt"
-printf 'victim-original\n' >"$victim"
-ln -sf "$victim" /tmp/omarchy-update.log
-script -qefc 'echo RED-MARKER' /tmp/omarchy-update.log >/dev/null 2>&1 || true
-rm -f /tmp/omarchy-update.log
-if grep -q RED-MARKER "$victim"; then
-  pass "base mechanism: script(1) follows a planted symlink at /tmp/omarchy-update.log"
-else
-  fail "base mechanism: expected the planted symlink to be followed"
-fi
-
+created_logs=()
+cleanup() {
+  local log
+  for log in "${created_logs[@]}"; do
+    rm -f -- "$log"
+  done
+  rm -rf -- "$test_tmp"
+}
+trap cleanup EXIT
+mkdir -p "$test_tmp/bin" "$test_tmp/untrusted-tmp"
+# An untrusted TMPDIR must not determine where script(1) reopens the log.
+export TMPDIR="$test_tmp/untrusted-tmp"
 # --- extract the fixed wrapper block verbatim from the shipped script ---
 awk '/if \[\[ -z \$\{OMARCHY_UPDATE_LOGGED:-\} \]\]; then/{flag=1} flag{print} flag && /^fi$/{exit}' \
   "$FIXED_UPDATE" >"$test_tmp/wrapper.sh"
@@ -40,64 +35,63 @@ awk '/if \[\[ -z \$\{OMARCHY_UPDATE_LOGGED:-\} \]\]; then/{flag=1} flag{print} f
 grep -q 'mktemp' "$test_tmp/wrapper.sh" || fail "extracted wrapper does not create a private log"
 grep -q 'OMARCHY_UPDATE_LOG_FILE' "$test_tmp/wrapper.sh" || fail "extracted wrapper does not export OMARCHY_UPDATE_LOG_FILE"
 
-# Stub script(1): last argv word is the typescript. Real script(1) truncates
-# through symlinks, so :> reproduces its open semantics faithfully. The child
-# command itself is script's business, not the wrapper's, so the stub only
-# records where the transcript would land.
+# Stub script(1): last argv word is the transcript. Capture the original
+# process PID to prove the logging wrapper uses exec rather than waiting
+# in a separate Bash process (which can change signal handling).
 cat >"$test_tmp/bin/script" <<'STUB'
 #!/bin/bash
+set -euo pipefail
 logfile="${@: -1}"
 printf '%s\n' "$OMARCHY_UPDATE_LOG_FILE" >"$SANDBOX/captured-env-log"
 printf '%s\n' "$logfile" >"$SANDBOX/captured-arg-log"
-: >"$logfile"
-echo "TRANSCRIPT-MARKER" >>"$logfile"
+printf '%s\n' "$BASHPID" >"$SANDBOX/script-pid"
+printf 'TRANSCRIPT-MARKER\n' >"$logfile"
 exit "${SCRIPT_CHILD_RC:-0}"
 STUB
 chmod +x "$test_tmp/bin/script"
 
 export SANDBOX="$test_tmp"
 export PATH="$test_tmp/bin:$PATH"
+# --- green: private logs persist and exec preserves signal/PID semantics ---
+run_wrapper() {
+  WRAPPER_RC=0
+  (
+    export PATH="$test_tmp/bin:/usr/bin:/bin"
+    user_path="/usr/bin:/bin"
+    set -- "$test_tmp/inner.sh"
+    printf '%s\n' "$BASHPID" >"$SANDBOX/wrapper-pid"
+    # shellcheck disable=SC1090
+    source "$test_tmp/wrapper.sh"
+  ) >"$test_tmp/wrapper-out" 2>"$test_tmp/wrapper-err" || WRAPPER_RC=$?
+  WRAPPER_LOG=$(cat "$test_tmp/captured-arg-log")
+  created_logs+=("$WRAPPER_LOG")
+}
+
 export SCRIPT_CHILD_RC=0
+run_wrapper
+(( WRAPPER_RC == 0 )) || fail "wrapper: successful update should exit 0" "status $WRAPPER_RC"
+[[ $WRAPPER_LOG == /tmp/omarchy-update-log.* ]] || fail "wrapper: expected a unique system tmp log" "$WRAPPER_LOG"
+[[ $WRAPPER_LOG != "$TMPDIR"/* ]] || fail "wrapper: must ignore an untrusted TMPDIR"
+[[ $WRAPPER_LOG == "$(cat "$test_tmp/captured-env-log")" ]] || fail "wrapper: script and analyzer disagree on the log"
+[[ -f $WRAPPER_LOG ]] || fail "wrapper: completed update must retain its log"
+[[ $(stat -c %a "$WRAPPER_LOG") == 600 ]] || fail "wrapper: transcript file must be private"
+grep -Fq 'TRANSCRIPT-MARKER' "$WRAPPER_LOG" || fail "wrapper: transcript content was lost"
+grep -Fq "$WRAPPER_LOG" "$test_tmp/wrapper-err" || fail "wrapper: diagnostic does not name the retained log"
+pass "wrapper: per-run private log is retained and discoverable"
 
-# --- green: planted symlink at the old fixed path is ignored, private log used ---
-printf 'victim-original\n' >"$victim"
-ln -sf "$victim" /tmp/omarchy-update.log
+[[ $(cat "$test_tmp/wrapper-pid") == "$(cat "$test_tmp/script-pid")" ]] ||
+  fail "wrapper: script(1) must replace the wrapper process (exec)"
+pass "wrapper: exec preserves process identity and signal behavior"
 
-rc=0
-(
-  export PATH="$test_tmp/bin:/usr/bin:/bin"
-  user_path="/usr/bin:/bin"
-  set -- "$test_tmp/inner.sh"
-  # shellcheck disable=SC1090
-  source "$test_tmp/wrapper.sh"
-) || rc=$?
-rm -f /tmp/omarchy-update.log
-
-(( rc == 0 )) || fail "fixed wrapper: expected exit 0, got $rc"
-[[ $(cat "$victim") == "victim-original" ]] || fail "fixed wrapper: planted symlink victim was modified"
-pass "fixed wrapper: planted symlink at the old fixed path is ignored"
-
-arg_log=$(cat "$test_tmp/captured-arg-log")
-env_log=$(cat "$test_tmp/captured-env-log")
-[[ $arg_log == "$env_log" ]] || fail "fixed wrapper: script got '$arg_log' but env said '$env_log'"
-[[ $arg_log == "$test_tmp"/tmp/omarchy-update-log.* ]] || fail "fixed wrapper: log is not a private mktemp file (got $arg_log)"
-[[ $arg_log != "/tmp/omarchy-update.log" ]] || fail "fixed wrapper: still using the fixed /tmp path"
-[[ ! -e $arg_log ]] || fail "fixed wrapper: private log was not cleaned up"
-pass "fixed wrapper: transcript goes to a private mktemp log, cleaned up after"
-
-# --- green: exit status of the logged run propagates ---
+first_log=$WRAPPER_LOG
 export SCRIPT_CHILD_RC=42
-rc=0
-(
-  export PATH="$test_tmp/bin:/usr/bin:/bin"
-  user_path="/usr/bin:/bin"
-  set -- "$test_tmp/inner.sh"
-  source "$test_tmp/wrapper.sh"
-) || rc=$?
-(( rc == 42 )) || fail "fixed wrapper: expected exit 42 from the logged run, got $rc"
-pass "fixed wrapper: logged run exit status propagates"
+run_wrapper
+(( WRAPPER_RC == 42 )) || fail "wrapper: logged failure exit status propagates" "status $WRAPPER_RC"
+[[ -f $WRAPPER_LOG ]] || fail "wrapper: failed update must retain its transcript"
+[[ $WRAPPER_LOG != "$first_log" ]] || fail "wrapper: two runs must not share a log"
+grep -Fq "$WRAPPER_LOG" "$test_tmp/wrapper-err" || fail "wrapper: failed update must print its log path"
+pass "wrapper: failure propagates and logs remain distinct"
 export SCRIPT_CHILD_RC=0
-
 # --- analyze-logs honors OMARCHY_UPDATE_LOG_FILE ---
 fail_log="$test_tmp/fail.log"
 printf 'Updating linux initcpios\nsome error\n' >"$fail_log"

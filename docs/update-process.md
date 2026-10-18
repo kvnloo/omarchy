@@ -23,7 +23,7 @@ The design goal is:
 | --- | --- | --- |
 | `${XDG_RUNTIME_DIR:-/tmp}/omarchy-update.lock` | user | Prevent overlapping update runs. Owned by `omarchy-update-lock`; compatibility wrappers inherit/respect it. |
 | `${XDG_RUNTIME_DIR}/omarchy-update-stay-awake/` | user | Private mode-0700 inhibitor coordination state. If no runtime directory is available, the helper uses the validated mode-0700 `/tmp/omarchy-$UID/` fallback. |
-| `$OMARCHY_UPDATE_LOG_FILE` (private mktemp log) | user | Transcript of `omarchy update`, used by `omarchy-update-analyze-logs`. Created per run so a pre-planted `/tmp` path cannot redirect it. |
+| `$OMARCHY_UPDATE_LOG_FILE` (`/tmp/omarchy-update-log.*`) | user | Unique mode-0600 transcript used by `omarchy-update-analyze-logs`. Its path is printed when an update starts and the file remains available for diagnosis until removed by the user or temporary-file cleanup. |
 | `~/.local/state/omarchy/current/` | user | Generated active theme, selected theme name, and current background symlink. |
 | `~/.local/state/omarchy/migrations/` | user | Per-user migration markers. |
 | `~/.local/state/omarchy/reboot-required` | user | Optional reboot marker checked by `omarchy-update-restart`. |
@@ -164,8 +164,7 @@ Important behavior:
   check is silently skipped. Set `OMARCHY_UPDATE_FORCE=1` to bypass the check.
 - `omarchy update` checks/runs migrations in the same visible terminal via
   `omarchy-migrate` after pacman finishes.
-- A failure should leave enough output in the per-run update log (`$OMARCHY_UPDATE_LOG_FILE`) and the
-  terminal transcript to debug.
+- Each update prints its private log path on startup. The per-run transcript (`$OMARCHY_UPDATE_LOG_FILE`) is retained after success or failure, including for debugging failures that end before log analysis.
 
 ## Path 2: direct `sudo pacman -Syu` attempt
 
