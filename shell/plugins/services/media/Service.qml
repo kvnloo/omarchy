@@ -4,6 +4,7 @@ import Quickshell.Io
 import Quickshell.Services.Mpris
 import Quickshell.Services.Pipewire
 import "MediaModel.js" as MediaModel
+import qs.Commons
 
 Item {
   id: root
@@ -342,7 +343,7 @@ Item {
     }
 
     if (showFeedback !== false) Qt.callLater(function() {
-      root.showOsd("Source", "media-source", next)
+      root.showOsd(I18n.t("media.source"), "media-source", next)
     })
 
     return true
@@ -370,27 +371,27 @@ Item {
   function runAction(action, showFeedback, targetKey) {
     var player = playerForAction(action, targetKey)
     var key = playerKey(player)
-    var actionLabel = "Play/pause"
+    var actionLabel = I18n.t("media.playPause")
     var iconName = "media"
     var beforeTrackSignature = trackSignature(player)
     var handled = false
 
     if (action === "next") {
-      actionLabel = "Next"
+      actionLabel = I18n.t("media.next")
       iconName = "media-next"
       if (player && player.canGoNext) {
         player.next()
         handled = true
       }
     } else if (action === "previous") {
-      actionLabel = "Previous"
+      actionLabel = I18n.t("media.previous")
       iconName = "media-previous"
       if (player && player.canGoPrevious) {
         player.previous()
         handled = true
       }
     } else if (action === "play") {
-      actionLabel = "Play"
+      actionLabel = I18n.t("media.play")
       iconName = "media-play"
       if (player && player.canPlay) {
         player.play()
@@ -400,7 +401,7 @@ Item {
         handled = true
       }
     } else if (action === "pause") {
-      actionLabel = "Pause"
+      actionLabel = I18n.t("media.pause")
       iconName = "media-pause"
       if (player && player.canPause) {
         player.pause()
@@ -410,7 +411,7 @@ Item {
         handled = true
       }
     } else if (action === "playPause") {
-      actionLabel = player && player.isPlaying ? "Pause" : "Play"
+      actionLabel = player && player.isPlaying ? I18n.t("media.pause") : I18n.t("media.play")
       iconName = player && player.isPlaying ? "media-pause" : "media-play"
       if (player && player.isPlaying && player.canPause) {
         player.pause()
@@ -495,7 +496,7 @@ Item {
       icon: MediaModel.volumeOsdIcon(step.percent, step.muted),
       message: "",
       value: String(step.percent),
-      progressText: step.percent + "%",
+      progressText: I18n.formatNumber(step.percent) + "%",
       max: "100",
       duration: ""
     }))
@@ -530,7 +531,7 @@ Item {
     return true
   }
 
-  IpcHandler {
+  ShellIpc {
     id: ipcHandler
     target: "media"
 
