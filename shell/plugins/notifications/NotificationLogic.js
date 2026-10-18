@@ -251,6 +251,23 @@ function replacementSnapshot(notification, originalId, timestamp) {
   return updated
 }
 
+// The file name stays tied to the original timestamp and id, but a live
+// replaces_id update starts the on-screen countdown over. Save that renewed
+// deadline so restarting the shell does not expire the replacement against
+// the original notification's old timestamp. Never add it to model roles.
+function renewedPopupFileEntry(snapshot, duration, now) {
+  var entry = Object.assign({}, snapshot || {})
+  var lifetime = Number(duration)
+  var clock = Number(now)
+  if (isFinite(lifetime) && lifetime > 0 && isFinite(clock)) {
+    entry.deadline = clock + lifetime
+  } else {
+    // A replacement can change a finite critical toast into a sticky one.
+    delete entry.deadline
+  }
+  return entry
+}
+
 function historyEntry(value, normalUrgency) {
   var e = value || {}
   return {
@@ -303,9 +320,9 @@ function popupEntry(value, normalUrgency) {
   var expire = Number((value || {}).expireTimeout || 0)
   if (!isFinite(expire) || expire < 0) expire = 0
   entry.expireTimeout = expire
-  // Absolute expiry deadline, set only when a restore resets a surviving
-  // popup's display lifetime. Kept out of the entry entirely when unset so
-  // restored rows match the roles of freshly received ones.
+  // Absolute expiry deadline, set when a restore or replaces_id update
+  // renews a popup's lifetime. Kept off the live model's roles: the deadline
+  // only governs cross-restart expiration.
   var deadline = Number((value || {}).deadline || 0)
   if (isFinite(deadline) && deadline > 0) entry.deadline = deadline
   return entry
@@ -511,6 +528,7 @@ if (typeof module !== "undefined") {
     popupRowChanged: popupRowChanged,
     isDuplicatePopup: isDuplicatePopup,
     replacementSnapshot: replacementSnapshot,
+    renewedPopupFileEntry: renewedPopupFileEntry,
     historyEntry: historyEntry,
     parseSettings: parseSettings,
     historyRows: historyRows,
