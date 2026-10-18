@@ -6,7 +6,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 helper="$ROOT/bin/omarchy-root-btrfs-extra-luks"
 analyze_logs="$ROOT/bin/omarchy-update-analyze-logs"
-hooks="$ROOT/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
+hooks="$ROOT/etc/mkinitcpio.conf.d/00-omarchy-hooks.conf"
 
 [[ -x $helper ]] || fail "extra-LUKS helper exists" "missing $helper"
 pass "extra-LUKS helper exists"
@@ -19,9 +19,8 @@ grep -q 'omarchy-root-btrfs-extra-luks || true' "$analyze_logs" ||
   fail "update-analyze-logs does not block reboot on extra LUKS"
 pass "update-analyze-logs does not block reboot on extra LUKS"
 
-grep -q 'encrypt' "$hooks" || fail "HOOKS still uses classic encrypt"
-grep -q 'sd-encrypt' "$hooks" && fail "HOOKS must not switch to sd-encrypt"
-pass "HOOKS line still uses classic encrypt"
+grep -q 'block encrypt filesystems' "$hooks" || fail "non-Apple busybox baseline still uses classic encrypt"
+pass "non-Apple busybox baseline still uses classic encrypt"
 
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
