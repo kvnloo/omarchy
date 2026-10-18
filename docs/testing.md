@@ -131,3 +131,4 @@ only a live session can prove.
 - **Assert the invariant, not the snapshot.** Config tests pin the property a
   test is named for (this widget stays adjacent to that one) rather than whole
   structures, so unrelated churn does not fail them.
+- **Separate account existence from home readiness.** A failed `useradd -m` can leave an NSS entry without a home directory. Provisioning retry fixtures must model both states independently, preserve the username pin while the home is missing, and prove that setup stays pending before credentials or sudoers are changed. Keep system-account commands isolated; creating real users is not a safe test fixture.
