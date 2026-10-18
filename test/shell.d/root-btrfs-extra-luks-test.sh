@@ -104,7 +104,10 @@ single_device_show=$'Label: none  uuid: 00000000-0000-0000-0000-000000000000\n  
 same_luks_members_show=$'Label: none  uuid: 00000000-0000-0000-0000-000000000000\n        Total devices 2 FS bytes used 1.00GiB\n        devid    1 size 10.00GiB used 2.00GiB path /dev/mapper/root\n        devid    2 size 10.00GiB used 0.00GiB path /dev/mapper/extra-same'
 
 
-plain_extra_show=
+# Keep two Btrfs members in the fixture; the second is a plain block
+# device, not another LUKS mapping. An empty response would pass vacuously.
+plain_extra_show=${two_device_show/\/dev\/mapper\/extra/\/dev\/sdb}
+[[ $plain_extra_show == *"path /dev/sdb" ]] || fail "plain extra fixture retains its second member"
 set +e
 TEST_BTRFS_SHOW="$two_device_show" run_helper
 status=$?
