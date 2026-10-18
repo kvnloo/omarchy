@@ -42,7 +42,7 @@ first_luks_ancestor() {
       printf '%s\n' "$name"
       return 0
     fi
-  done < <(lsblk -nspo NAME,FSTYPE "$device" 2>/dev/null)
+  done < <(lsblk -nslpo NAME,FSTYPE "$device" 2>/dev/null)
 
   return 1
 }
