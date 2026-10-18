@@ -53,7 +53,7 @@ XML
 
   [[ $(first_family monospace) == "Sarasa Mono SC" ]] ||
     fail "generic monospace must select the chosen font"
-  [[ $(first_family 'ui\\-monospace') == "Sarasa Mono SC" ]] ||
+  [[ $(first_family 'ui\-monospace') == "Sarasa Mono SC" ]] ||
     fail "ui-monospace must select the chosen font"
   [[ $(first_family 'Noto Sans Mono') == "Noto Sans Mono" ]] ||
     fail "explicit named mono font must not be remapped"
