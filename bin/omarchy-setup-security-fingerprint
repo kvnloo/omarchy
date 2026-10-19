@@ -56,10 +56,14 @@ EOF
   fi
 }
 
-verify_fingerprint() {
+verify_fingerprint() (
   local attempt output status
   local output_file
   output_file=$(mktemp)
+  # Subshell confines traps to verification; cleanup also runs on interrupts.
+  trap 'rm -f "$output_file"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
 
   # Some readers are still owned by the enroll operation for a moment after it
   # returns. Give that handoff one settle interval, then retry only errors that
@@ -77,7 +81,6 @@ verify_fingerprint() {
     status=${PIPESTATUS[0]}
 
     if (( status == 0 )); then
-      rm -f "$output_file"
       return 0
     fi
 
@@ -89,13 +92,11 @@ verify_fingerprint() {
       continue
     fi
 
-    rm -f "$output_file"
     return 1
   done
 
-  rm -f "$output_file"
   return 1
-}
+)
 
 
 echo -e "\e[32mSetting up fingerprint scanner for authentication.\n\e[0m"
