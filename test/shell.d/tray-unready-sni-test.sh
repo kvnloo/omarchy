@@ -64,6 +64,12 @@ assert(
   /id: trayMenuPendingTimer\s*interval: \d+\s*onTriggered: root\.trayMenuPending = false/.test(opener),
   'a pending click expires'
 )
+
+const pendingInterval = Number((opener.match(/id: trayMenuPendingTimer\s*interval: (\d+)/) || [])[1])
+assert(
+  pendingInterval > 1500 && pendingInterval < 2000,
+  'pending tray click accommodates 1.5s late rows but not the reproduced 2s abandoned click'
+)
 assert(
   /function onActivePopoutChanged\(\) \{\s*if \(root\.bar\.activePopout\) root\.trayMenuPending = false/.test(opener),
   'another bar popup cancels a pending tray click'
