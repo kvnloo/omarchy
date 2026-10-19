@@ -607,10 +607,11 @@ BarWidget {
     }
   }
 
-  // A menu that never loads must not open long after the click was abandoned.
+  // Give a slow 1.5s D-Bus menu time to load, but limit abandoned clicks.
+  // Without a popup grab, a click on the desktop cannot cancel this request.
   Timer {
     id: trayMenuPendingTimer
-    interval: 3000
+    interval: 1800
     onTriggered: root.trayMenuPending = false
   }
 
