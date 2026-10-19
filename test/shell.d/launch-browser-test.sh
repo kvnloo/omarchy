@@ -130,6 +130,7 @@ cat >"$mock_bin/omarchy-launch-browser" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >>"$OMARCHY_TEST_BROWSER_RECURSE"
 SH
+chmod +x "$mock_bin/omarchy-launch-browser"
 mkdir -p "$test_home/.config"
 cat >"$test_home/.config/mimeapps.list" <<'EOF'
 [Default Applications]
