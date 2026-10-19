@@ -1,16 +1,36 @@
 #!/bin/bash
 
 # omarchy:summary=Show a minimal workspace snapshot for an explicitly invoked agent
-# omarchy:args=[--json]
-# omarchy:examples=omarchy agent context --json
+# omarchy:args=[--json] [--focused]
+# omarchy:examples=omarchy agent context --json | omarchy agent context --focused
 # omarchy:hidden=true
 
 set -euo pipefail
 
-if (( $# > 1 )) || { (( $# == 1 )) && [[ $1 != --json ]]; }; then
-  echo "Usage: omarchy agent context [--json]" >&2
-  exit 1
-fi
+focused_only=false
+seen_json=false
+for arg in "$@"; do
+  case "$arg" in
+    --json)
+      if [[ $seen_json == true ]]; then
+        echo "Usage: omarchy agent context [--json] [--focused]" >&2
+        exit 1
+      fi
+      seen_json=true
+      ;;
+    --focused)
+      if [[ $focused_only == true ]]; then
+        echo "Usage: omarchy agent context [--json] [--focused]" >&2
+        exit 1
+      fi
+      focused_only=true
+      ;;
+    *)
+      echo "Usage: omarchy agent context [--json] [--focused]" >&2
+      exit 1
+      ;;
+  esac
+done
 
 # This command is deliberately invoked on demand; do not run it as a shell
 # service or send its output to a model without the user's request.
@@ -36,26 +56,33 @@ fi
 if ! snapshot=$(
   # Keep raw Hyprland JSON off argv (which other processes may inspect).
   # jq reads the two source documents from stdin, and emits only the allowlist.
-  printf '%s\n%s\n' "$monitors" "$workspaces" | jq -cs '
+  printf '%s\n%s\n' "$monitors" "$workspaces" | jq -cs --argjson focusedOnly "$focused_only" '
     if length != 2 or (.[0] | type) != "array" or (.[1] | type) != "array" then
       error("unexpected Hyprland shape")
     else
+      .[0] as $monitors | .[1] as $workspaces |
       {
         schemaVersion: 1,
-        monitors: (.[0] | map({
-          name: (.name // ""),
-          focused: (.focused == true),
-          activeWorkspace: {
-            id: (.activeWorkspace.id // null),
-            name: (.activeWorkspace.name // "")
-          }
-        })),
-        workspaces: (.[1] | map({
-          id: (.id // null),
-          name: (.name // ""),
-          monitor: (.monitor // ""),
-          windows: (.windows // 0)
-        }))
+        monitors: ($monitors |
+          (if $focusedOnly then map(select(.focused == true)) else . end) |
+          map({
+            name: (.name // ""),
+            focused: (.focused == true),
+            activeWorkspace: {
+              id: (.activeWorkspace.id // null),
+              name: (.activeWorkspace.name // "")
+            }
+          })),
+        workspaces: ($workspaces |
+          (if $focusedOnly then
+            map(select(.id as $id | any($monitors[]; .focused == true and .activeWorkspace.id == $id)))
+           else . end) |
+          map({
+            id: (.id // null),
+            name: (.name // ""),
+            monitor: (.monitor // ""),
+            windows: (.windows // 0)
+          }))
       }
     end
   ' 2>/dev/null
