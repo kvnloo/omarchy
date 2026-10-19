@@ -70,6 +70,10 @@ case "$VERIFY_MODE" in
     echo 'VerifyStart failed: GDBus.Error:net.reactivated.Fprint.Error.Internal: device busy'
     exit 1
     ;;
+  hang)
+    /usr/bin/sleep 30
+    exit 99
+    ;;
   match) ;;
   *) exit 99 ;;
 esac
@@ -122,3 +126,18 @@ pass "busy text outside a Claim failure does not restart verification"
 
 run_setup match 1 1 yes
 pass "a first successful verification configures PAM and lock once"
+
+# A canceled verification must not leave the status log behind or configure PAM.
+: >"$VERIFY_LOG"
+rm -f "$VERIFY_COUNT"
+if VERIFY_MODE=hang timeout -s TERM -k 1 0.2s bash "$setup_script" >"$scratch/output" 2>&1; then
+  fail "canceled verification unexpectedly succeeded"
+else
+  status=$?
+fi
+(( status == 124 )) || fail "canceled verification exits through timeout" "$status"
+[[ -z $(find "$scratch/tmp" -mindepth 1 -print -quit) ]] || fail "canceled verification leaves a temporary log"
+if grep -Eq '^(pam|apply-lock)$' "$VERIFY_LOG"; then
+  fail "canceled verification must not configure authentication"
+fi
+pass "an interrupted verification cleans its log without touching PAM"
