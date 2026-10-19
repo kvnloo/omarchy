@@ -84,8 +84,8 @@ plugin_owner_for_desktop() {
   [[ -d $plugins_dir ]] || return 1
 
   # A plugin owns a launcher whose own command lives in its tree. The desktop id,
-  # Path=, Icon= and secondary actions can name a plugin without belonging to it.
-  commands=$(awk '/^\[/ { main = ($0 == "[Desktop Entry]") } main && /^(Exec|TryExec)[ \t]*=/ { sub(/^[^=]*=[ \t]*/, ""); print }' "$desktop_file")
+  # TryExec=, Path=, Icon= and secondary actions can name a plugin without belonging to it.
+  commands=$(awk '/^\[/ { main = ($0 == "[Desktop Entry]") } main && /^Exec[ \t]*=/ { sub(/^[^=]*=[ \t]*/, ""); print }' "$desktop_file")
   while IFS= read -r command; do
     if [[ $command == \"* ]]; then
       command=${command#\"}
@@ -139,3 +139,4 @@ fi
 
 echo "Don't know how to uninstall $desktop_file_name" >&2
 exit 1
+

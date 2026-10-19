@@ -92,6 +92,13 @@ Exec=true
 Icon=$tmp_dir/home/.config/omarchy/plugins/omamail/icons/app.png
 DESKTOP
 
+cat >"$tmp_dir/data/applications/borrowed-tryexec.desktop" <<DESKTOP
+[Desktop Entry]
+Name=Borrowed Availability Check
+Exec=/usr/bin/editor
+TryExec=$tmp_dir/home/.config/omarchy/plugins/omacom.mail/bin/handler
+DESKTOP
+
 mkdir -p "$tmp_dir/dev/linked/bin"
 ln -s "$tmp_dir/dev/linked" "$tmp_dir/home/.config/omarchy/plugins/linked.widget"
 cat >"$tmp_dir/data/applications/linked.desktop" <<DESKTOP
@@ -146,6 +153,14 @@ export HOME="$tmp_dir/home"
 "$ROOT/bin/omarchy-remove-launcher-entry" editor.desktop Editor
 "$ROOT/bin/omarchy-remove-launcher-entry" escape.desktop Escape
 
+actions_before_tryexec=$(cat "$TEST_LOG")
+"$ROOT/bin/omarchy-remove-launcher-entry" borrowed-tryexec.desktop "Borrowed Availability Check"
+[[ $(cat "$TEST_LOG") == "$actions_before_tryexec" ]] ||
+  fail "TryExec-only plugin references do not remove a plugin" "$(cat "$TEST_LOG")"
+[[ ! -e $tmp_dir/data/applications/borrowed-tryexec.desktop ]] ||
+  fail "TryExec-only plugin references still remove the selected desktop file"
+pass "TryExec-only references cannot remove a plugin"
+
 mapfile -t lines <"$TEST_LOG"
 
 [[ ${lines[0]} == "web:false:Basecamp" ]] || fail "launcher remove routes web apps by desktop name" "${lines[0]}"
@@ -190,3 +205,4 @@ pass "Icon-only references cannot remove a plugin"
 [[ ! -e $tmp_dir/data/applications/notes.desktop && ! -e $tmp_dir/data/applications/editor.desktop && ! -e $tmp_dir/data/applications/escape.desktop ]] ||
   fail "a desktop id, Path=, desktop action or path leaving a plugin removes only the desktop file"
 pass "a desktop id, Path=, desktop action or path leaving a plugin cannot remove a plugin"
+
