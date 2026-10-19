@@ -65,10 +65,43 @@ assert(
   'a pending click expires'
 )
 
-const pendingInterval = Number((opener.match(/id: trayMenuPendingTimer\s*interval: (\d+)/) || [])[1])
-assert(
-  pendingInterval > 1500 && pendingInterval < 2000,
-  'pending tray click accommodates 1.5s late rows but not the reproduced 2s abandoned click'
+// Exercise production QML JavaScript state transitions without pinning a
+// UX-tunable timeout. This does not simulate an outside desktop click.
+const vm = require('vm')
+function syncMenuWithState(rows, pending, open) {
+  const state = {
+    TrayModel: tray,
+    trayMenuOpener: { children: { values: rows } },
+    trayMenuPending: pending,
+    trayMenuOpen: open
+  }
+  vm.runInNewContext(sync + '\n' + 'syncTrayMenuOpen()', state)
+  return { pending: state.trayMenuPending, open: state.trayMenuOpen }
+}
+assertDeepEqual(
+  syncMenuWithState([], true, false),
+  { pending: true, open: false },
+  'pending click with no rows never grabs focus'
+)
+assertDeepEqual(
+  syncMenuWithState([{ text: 'Open' }], true, false),
+  { pending: false, open: true },
+  'ready rows consume the click and open once'
+)
+assertDeepEqual(
+  syncMenuWithState([{ text: 'Open' }], false, false),
+  { pending: false, open: false },
+  'rows arriving after cancellation or timeout cannot reopen the menu'
+)
+assertDeepEqual(
+  syncMenuWithState([], false, true),
+  { pending: false, open: false },
+  'losing all rows releases an open menu grab'
+)
+assertDeepEqual(
+  syncMenuWithState([{ text: 'Open' }], false, true),
+  { pending: false, open: true },
+  'already open populated menu stays open'
 )
 assert(
   /function onActivePopoutChanged\(\) \{\s*if \(root\.bar\.activePopout\) root\.trayMenuPending = false/.test(opener),
