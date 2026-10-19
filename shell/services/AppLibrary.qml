@@ -49,7 +49,7 @@ Item {
     for (var i = 0; i < values.length; i++) {
       var entry = values[i]
       if (!entry) continue
-      entries.push([entry.id, entry.name, entry.genericName, entry.icon, AppSearch.keywordText(entry)].join("\u0002"))
+      entries.push([entry.id, entry.name, entry.genericName, entry.comment, entry.icon, AppSearch.keywordText(entry)].join("\u0002"))
     }
     entries.sort()
     return entries.join("\u0001")
