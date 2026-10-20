@@ -111,6 +111,16 @@ jq -e '.windows[1].x == 2200' <<<"$changed" >/dev/null ||
 
 pass "desktop state revision tracks semantic changes"
 
+# Unmapped clients can remain in Hyprland's clients response for a moment.
+# jq's `// true` treats false as missing and previously published them.
+with_unmapped=$(jq -c '. + [{address:"0xunmapped",mapped:false,pid:303,class:"stale",title:"Should never be in a snapshot",at:[0,0],size:[10,10],workspace:{id:2}}]' <<<"$clients")
+filtered=$(clients="$with_unmapped" run_state)
+jq -e '(.windows | length) == 2 and ([.windows[].id] | index("0xunmapped") | not)' <<<"$filtered" >/dev/null ||
+  fail "desktop snapshot publishes an unmapped window"
+[[ $(jq -r '.revision' <<<"$filtered") == $(jq -r '.revision' <<<"$first") ]] ||
+  fail "adding an unmapped client changes the semantic desktop revision"
+pass "desktop state excludes unmapped clients without changing its revision"
+
 if PATH="$mock_bin:$PATH" \
   OMARCHY_TEST_MONITORS_JSON='{}' \
   OMARCHY_TEST_WORKSPACES_JSON="$workspaces" \

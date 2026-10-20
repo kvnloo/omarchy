@@ -124,7 +124,7 @@ canonical=$(
           ] | sort_by(.id // -1)),
           windows: ([
             $clients[]
-            | select((.mapped // true) == true)
+            | select(.mapped != false)
             | {
                 id: (.address // null),
                 pid: (.pid // null),
