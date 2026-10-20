@@ -62,7 +62,6 @@ verify_fingerprint() (
   output_file=$(mktemp)
   # Subshell confines traps to verification; cleanup also runs on interrupts.
   trap 'rm -f "$output_file"' EXIT
-  trap 'exit 130' INT
   trap 'exit 143' TERM
 
   # Some readers are still owned by the enroll operation for a moment after it

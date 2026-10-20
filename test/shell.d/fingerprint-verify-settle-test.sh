@@ -70,9 +70,9 @@ case "$VERIFY_MODE" in
     echo 'VerifyStart failed: GDBus.Error:net.reactivated.Fprint.Error.Internal: device busy'
     exit 1
     ;;
-  hang)
-    /usr/bin/sleep 30
-    exit 99
+  wait-for-cancel)
+    touch "$VERIFY_READY"
+    exec /usr/bin/sleep 30
     ;;
   match) ;;
   *) exit 99 ;;
@@ -127,17 +127,41 @@ pass "busy text outside a Claim failure does not restart verification"
 run_setup match 1 1 yes
 pass "a first successful verification configures PAM and lock once"
 
-# A canceled verification must not leave the status log behind or configure PAM.
-: >"$VERIFY_LOG"
-rm -f "$VERIFY_COUNT"
-if VERIFY_MODE=hang timeout -s TERM -k 1 0.2s bash "$setup_script" >"$scratch/output" 2>&1; then
-  fail "canceled verification unexpectedly succeeded"
-else
-  status=$?
-fi
-(( status == 124 )) || fail "canceled verification exits through timeout" "$status"
-[[ -z $(find "$scratch/tmp" -mindepth 1 -print -quit) ]] || fail "canceled verification leaves a temporary log"
-if grep -Eq '^(pam|apply-lock)$' "$VERIFY_LOG"; then
-  fail "canceled verification must not configure authentication"
-fi
-pass "an interrupted verification cleans its log without touching PAM"
+require_command python3
+for signal_name in SIGINT SIGTERM; do
+  : >"$VERIFY_LOG"
+  rm -f "$VERIFY_COUNT" "$scratch/verify-ready" "$scratch/pam/omarchy-lock-fingerprint"
+  VERIFY_MODE=wait-for-cancel VERIFY_READY="$scratch/verify-ready" \
+    python3 - "$setup_script" "$scratch/output" "$signal_name" <<'PY' || fail "$signal_name cancels setup"
+import os
+import signal
+import subprocess
+import sys
+import time
+
+setup_script, output_path, signal_name = sys.argv[1:]
+cancel_signal = getattr(signal, signal_name)
+with open(output_path, "w") as output:
+    process = subprocess.Popen(["bash", setup_script], stdout=output, stderr=output, start_new_session=True)
+    try:
+        deadline = time.monotonic() + 5
+        while not os.path.exists(os.environ["VERIFY_READY"]):
+            if process.poll() is not None or time.monotonic() >= deadline:
+                raise RuntimeError("verification did not start")
+            time.sleep(0.01)
+        os.killpg(process.pid, cancel_signal)
+        status = process.wait(timeout=5)
+        if status not in (-cancel_signal, 128 + cancel_signal):
+            raise RuntimeError(f"unexpected cancellation status: {status}")
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+PY
+  [[ $(<"$VERIFY_COUNT") == 1 ]] || fail "$signal_name does not retry verification"
+  if grep -Eq '^(pam|apply-lock)$' "$VERIFY_LOG"; then
+    fail "$signal_name must not configure authentication"
+  fi
+  [[ -z $(find "$scratch/tmp" -mindepth 1 -print -quit) ]] || fail "$signal_name removes verification logs"
+  pass "$signal_name removes verification logs without configuring authentication"
+done
