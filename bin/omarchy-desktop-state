@@ -48,7 +48,10 @@ if [[ ${1:-} == "--watch" ]]; then
       --arg data "$data" \
       '{schema: $schema, type: "invalidate", event: $event, data: $data}'
   done
-  exit 0
+  # Returning success here would imply the agent still has a live event
+  # subscription. Even a clean socket EOF means the watcher is now stale.
+  echo "Hyprland event stream closed" >&2
+  exit 1
 elif (($# != 0)); then
   echo "Usage: omarchy desktop state [--watch]" >&2
   exit 2

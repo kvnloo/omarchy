@@ -133,12 +133,18 @@ fi
 
 pass "desktop state fails closed on malformed compositor payloads"
 
+# A watch is not alive after EOF. A clean socket close also signals loss
+# of the event stream, while still delivering any events already received.
+set +e
 events=$(
   PATH="$mock_bin:$PATH" \
     XDG_RUNTIME_DIR="$test_tmp/runtime" \
     HYPRLAND_INSTANCE_SIGNATURE="fixture-instance" \
     "$ROOT/bin/omarchy-desktop-state" --watch
 )
+watch_status=$?
+set -e
+(( watch_status == 1 )) || fail "desktop watch reports clean source EOF as success" "status=$watch_status"
 
 jq -s -e '
   length == 2
