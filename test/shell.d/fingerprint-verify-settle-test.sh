@@ -27,11 +27,16 @@ STUB
 cat >"$scratch/bin/sudo" <<'STUB'
 #!/bin/bash
 case "$1" in
+  -n) exit 0 ;;
   fprintd-enroll) echo enroll >>"$VERIFY_LOG" ;;
   sed) echo pam >>"$VERIFY_LOG" ;;
   tee) echo pam >>"$VERIFY_LOG"; cat >/dev/null ;;
   *) echo unexpected >>"$VERIFY_LOG"; exit 99 ;;
 esac
+STUB
+cat >"$scratch/bin/busctl" <<'STUB'
+#!/bin/bash
+exit 1
 STUB
 cat >"$scratch/bin/omarchy-apply-lock" <<'STUB'
 #!/bin/bash
@@ -86,7 +91,13 @@ run_setup() {
   local mode="$1" attempts="$2" sleeps="$3" matched="$4"
   : >"$VERIFY_LOG"
   rm -f "$VERIFY_COUNT" "$scratch/pam/omarchy-lock-fingerprint"
-  VERIFY_MODE="$mode" bash "$setup_script" >"$scratch/output" 2>&1 || fail "$mode setup completes"
+  local status=0
+  VERIFY_MODE="$mode" bash "$setup_script" >"$scratch/output" 2>&1 || status=$?
+  if [[ $matched == "yes" ]]; then
+    (( status == 0 )) || fail "$mode setup completes" "$(cat "$scratch/output")"
+  else
+    (( status == 1 )) || fail "$mode setup exits 1 when verification fails" "$(cat "$scratch/output")"
+  fi
   [[ $(<"$VERIFY_COUNT") == "$attempts" ]] || fail "$mode verification count" "$(cat "$VERIFY_LOG")"
   (( $(grep -c '^sleep 0.5$' "$VERIFY_LOG") == sleeps )) || fail "$mode settle count" "$(cat "$VERIFY_LOG")"
   if grep -q '^unexpected$' "$VERIFY_LOG"; then
