@@ -205,4 +205,3 @@ pass "Icon-only references cannot remove a plugin"
 [[ ! -e $tmp_dir/data/applications/notes.desktop && ! -e $tmp_dir/data/applications/editor.desktop && ! -e $tmp_dir/data/applications/escape.desktop ]] ||
   fail "a desktop id, Path=, desktop action or path leaving a plugin removes only the desktop file"
 pass "a desktop id, Path=, desktop action or path leaving a plugin cannot remove a plugin"
-

@@ -139,4 +139,3 @@ fi
 
 echo "Don't know how to uninstall $desktop_file_name" >&2
 exit 1
-
