@@ -132,6 +132,46 @@ assertDeepEqual(
   'already open populated menu stays open'
 )
 
+const open = source.slice(
+  source.indexOf('function syncTrayMenuOpen()'),
+  source.indexOf('function trayIconSource(')
+)
+function rightClickItem(item, rows) {
+  const state = {
+    TrayModel: tray,
+    trayMenuOpener: { children: { values: rows } },
+    trayMenuPending: true,
+    trayMenuOpen: false,
+    activeTrayItem: null,
+    activeTrayAnchor: null,
+    timerRestarted: false,
+    resetTrayMenu: function() {},
+    trayMenuPendingTimer: { restart: function() { state.timerRestarted = true } }
+  }
+  vm.runInNewContext(open + '\n' + 'openTrayMenu(item, {}, {})', Object.assign(state, { item: item }))
+  return {
+    pending: state.trayMenuPending,
+    open: state.trayMenuOpen,
+    active: state.activeTrayItem === item,
+    timer: state.timerRestarted
+  }
+}
+assertDeepEqual(
+  rightClickItem({ menu: null }, []),
+  { pending: false, open: false, active: false, timer: false },
+  'right-clicking an unready item opens nothing and drops an earlier pending click'
+)
+assertDeepEqual(
+  rightClickItem({ menu: {} }, []),
+  { pending: true, open: false, active: true, timer: true },
+  'right-clicking an item whose rows have not arrived waits for them instead of grabbing focus'
+)
+assertDeepEqual(
+  rightClickItem({ menu: {} }, [{ text: 'Open' }]),
+  { pending: false, open: true, active: true, timer: true },
+  'right-clicking an item whose rows are ready opens its menu at once'
+)
+
 const closeBody = /^  function close\(\) \{\n([\s\S]*?)^  \}/m.exec(source)
 assert(!!closeBody, 'close() method exists')
 const pendingClose = {
