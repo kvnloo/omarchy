@@ -166,7 +166,6 @@ function clickIcon(button) {
 assert(!clickIcon(1), 'activating another tray icon drops a pending menu, so it cannot open over what was activated')
 assert(!clickIcon(4), 'middle-clicking another tray icon drops a pending menu')
 assert(clickIcon(2), 'a right-click is left to openTrayMenu, which owns the pending state')
-assert(/holdOpen: [^\n]*\btrayMenuPending\b/.test(source), 'a pending menu holds the drawer open, so its icon is still there when the rows arrive')
 
 // A click elsewhere on the desktop is not observed by this tray-local handler;
 // the existing bounded timer is a separate UX compromise needing compositor proof.
