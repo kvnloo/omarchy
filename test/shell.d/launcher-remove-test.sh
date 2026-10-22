@@ -99,6 +99,14 @@ Exec=/usr/bin/editor
 TryExec=$tmp_dir/home/.config/omarchy/plugins/omacom.mail/bin/handler
 DESKTOP
 
+# A hand-authored launcher may USE a plugin utility without belonging to it.
+mkdir -p "$tmp_dir/home/.config/omarchy/plugins/omamail/scripts"
+cat >"$tmp_dir/data/applications/borrowed-plugin.desktop" <<DESKTOP
+[Desktop Entry]
+Name=Borrowed Plugin Utility
+Exec=$tmp_dir/home/.config/omarchy/plugins/omamail/scripts/utility.sh
+DESKTOP
+
 mkdir -p "$tmp_dir/dev/linked/bin"
 ln -s "$tmp_dir/dev/linked" "$tmp_dir/home/.config/omarchy/plugins/linked.widget"
 cat >"$tmp_dir/data/applications/linked.desktop" <<DESKTOP
@@ -132,7 +140,13 @@ DESKTOP
 
 mkdir -p "$tmp_dir/home/.config/omarchy/plugins/native"
 
-write_fake_command omarchy-plugin-remove plugin
+# Model the actual plugin remover's confirmation boundary, not ownership.
+cat >"$tmp_dir/bin/omarchy-plugin-remove" <<'STUB'
+#!/bin/bash
+printf 'plugin:%s:%s\n' "${OMARCHY_REMOVE_NOTIFY:-}" "$*" >>"$TEST_LOG"
+[[ ${ALLOW_PLUGIN_REMOVAL:-no} == yes ]]
+STUB
+chmod +x "$tmp_dir/bin/omarchy-plugin-remove"
 
 export TEST_LOG="$tmp_dir/log"
 export PATH="$tmp_dir/bin:$PATH"
@@ -152,6 +166,7 @@ export HOME="$tmp_dir/home"
 "$ROOT/bin/omarchy-remove-launcher-entry" notes.desktop Notes
 "$ROOT/bin/omarchy-remove-launcher-entry" editor.desktop Editor
 "$ROOT/bin/omarchy-remove-launcher-entry" escape.desktop Escape
+"$ROOT/bin/omarchy-remove-launcher-entry" borrowed-plugin.desktop "Borrowed Plugin Utility"
 
 actions_before_tryexec=$(cat "$TEST_LOG")
 "$ROOT/bin/omarchy-remove-launcher-entry" borrowed-tryexec.desktop "Borrowed Availability Check"
@@ -175,31 +190,52 @@ pass "launcher remove opens package uninstall flow"
 [[ ! -e $tmp_dir/data/applications/aliens.desktop ]] || fail "launcher remove deletes user-owned desktop files"
 pass "launcher remove deletes user-owned desktop files"
 
-[[ ${lines[3]} == "plugin:false:--yes omamail" || ${lines[3]} == "plugin::--yes omamail" ]] ||
-  fail "launcher remove detects a quoted executable inside a plugin tree" "${lines[3]}"
-pass "launcher remove detects quoted plugin-owned executable paths"
+# Inspect the scheduled terminal commands before any confirmation is simulated.
+[[ ${lines[3]} == "terminal::omarchy-plugin-remove omamail && rm -f -- "* ]] ||
+  fail "quoted plugin executable schedules a confirmation" "${lines[3]}"
+[[ ${lines[4]} == "terminal::omarchy-plugin-remove omacom.mail && rm -f -- "* ]] ||
+  fail "plugin executable schedules a confirmation" "${lines[4]}"
+[[ ${lines[5]} == "terminal::omarchy-plugin-remove linked.widget && rm -f -- "* ]] ||
+  fail "symlinked plugin executable schedules a confirmation" "${lines[5]}"
+[[ ${lines[6]} == "terminal::omarchy-plugin-remove omamail && rm -f -- "* ]] ||
+  fail "a hand-authored launcher never causes automatic plugin removal" "${lines[6]}"
+(( ${#lines[@]} == 7 )) ||
+  fail "ordinary user launchers emit no extra actions" "$(printf '%s\n' "${lines[@]}")"
+(( $(grep -c '^plugin:' "$TEST_LOG" || true) == 0 )) ||
+  fail "no plugin was removed before explicit confirmation"
+[[ -e $tmp_dir/data/applications/omamail.desktop && -e $tmp_dir/data/applications/borrowed-plugin.desktop ]] ||
+  fail "pending confirmation leaves the selected launchers intact"
+pass "plugin references schedule confirmation instead of automatic deletion"
 
-[[ ${lines[4]} == "plugin:false:--yes omacom.mail" || ${lines[4]} == "plugin::--yes omacom.mail" ]] ||
-  fail "launcher remove detects an executable inside a plugin tree" "${lines[4]}"
-pass "launcher remove detects plugin-owned executable paths"
+# Execute the exact deferred shell command: refusing must preserve the launcher,
+# while accepting must remove the selected desktop only after the remover succeeds.
+command=${lines[3]#terminal::}
+[[ $command != *"--yes"* ]] || fail "plugin removal silently bypasses confirmation"
+if ALLOW_PLUGIN_REMOVAL=no bash -c "$command"; then
+  fail "refusing plugin removal unexpectedly succeeded"
+fi
+[[ -e $tmp_dir/data/applications/omamail.desktop ]] ||
+  fail "cancelled plugin confirmation deleted the launcher"
+pass "declining plugin confirmation retains the launcher"
 
-[[ ${lines[5]} == "plugin:false:--yes linked.widget" || ${lines[5]} == "plugin::--yes linked.widget" ]] ||
-  fail "launcher remove detects an executable inside a symlinked plugin" "${lines[5]}"
-pass "launcher remove detects executables inside symlinked plugins"
-
-(( ${#lines[@]} == 6 )) || fail "plain user desktop removal emits no extra actions" "$(printf '%s\n' "${lines[@]}")"
-pass "plain user desktop removal emits no extra actions"
-
+ALLOW_PLUGIN_REMOVAL=yes bash -c "$command" ||
+  fail "accepted plugin confirmation did not finish launcher removal"
 [[ ! -e $tmp_dir/data/applications/omamail.desktop ]] ||
-  fail "launcher remove deletes a plugin desktop file matched by quoted executable"
-[[ ! -e $tmp_dir/data/applications/mail-handler.desktop ]] ||
-  fail "launcher remove deletes a plugin desktop file matched by executable"
-pass "launcher remove deletes plugin desktop files after removing the plugin"
+  fail "accepted plugin removal did not delete the selected launcher"
+pass "accepted plugin removal is followed by launcher cleanup"
+
+borrowed_command=${lines[6]#terminal::}
+if ALLOW_PLUGIN_REMOVAL=no bash -c "$borrowed_command"; then
+  fail "hand-authored launcher bypassed plugin confirmation"
+fi
+[[ -e $tmp_dir/data/applications/borrowed-plugin.desktop ]] ||
+  fail "hand-authored launcher was removed after plugin confirmation failed"
+pass "borrowed plugin utility cannot remove an unrelated plugin without consent"
 
 [[ ! -e $tmp_dir/data/applications/borrowed-icon.desktop ]] ||
   fail "Icon-only plugin references remain ordinary user desktop files"
 (( $(grep -c '^plugin:' "$TEST_LOG" || true) == 3 )) ||
-  fail "Icon= under a plugin tree never implies plugin ownership"
+  fail "Icon=, TryExec= and Path= must never trigger plugin removal"
 pass "Icon-only references cannot remove a plugin"
 
 [[ ! -e $tmp_dir/data/applications/notes.desktop && ! -e $tmp_dir/data/applications/editor.desktop && ! -e $tmp_dir/data/applications/escape.desktop ]] ||

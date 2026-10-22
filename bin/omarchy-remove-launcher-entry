@@ -115,7 +115,13 @@ plugin_owner_for_desktop() {
 
 if is_user_desktop_file; then
   if plugin_id="$(plugin_owner_for_desktop)"; then
-    omarchy-plugin-remove --yes "$plugin_id"
+    # An executable within a plugin does not prove that this launcher owns it.
+    # Confirm plugin removal in a terminal; cancellation retains the launcher.
+    quoted_plugin="$(printf '%q' "$plugin_id")"
+    quoted_desktop="$(printf '%q' "$desktop_file")"
+    quoted_dir="$(printf '%q' "${desktop_file%/*}")"
+    exec omarchy-launch-floating-terminal-with-presentation \
+      "omarchy-plugin-remove $quoted_plugin && rm -f -- $quoted_desktop && { update-desktop-database $quoted_dir &>/dev/null || true; }"
   fi
 
   display_name="${entry_name:-$desktop_name}"
