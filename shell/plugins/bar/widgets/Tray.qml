@@ -46,7 +46,7 @@ BarWidget {
   // A widget being dragged along the bar opens the drawer, to show where it
   // can go, and so does any panel open from the tray or the tray section.
   readonly property bool barDragging: !!bar && bar.traySectionDragActive === true
-  readonly property bool holdOpen: trayMenuOpen || managePopupOpen || barDragging || (!!bar && bar.traySectionPopoutOpen === true)
+  readonly property bool holdOpen: trayMenuOpen || trayMenuPending || managePopupOpen || barDragging || (!!bar && bar.traySectionPopoutOpen === true)
   // The mark under the bar sits under the icon whose menu is open.
   readonly property Item openPanelIndicatorItem: trayMenuOpen ? activeTrayAnchor : null
   // Match Waybar's group/tray-expander drawer transition-duration.
