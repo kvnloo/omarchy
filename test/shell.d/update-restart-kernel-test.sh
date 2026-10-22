@@ -4,78 +4,66 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
-scratch=$(mktemp -d)
-trap 'rm -rf "$scratch"' EXIT
+tmp_dir=$(mktemp -d)
+trap 'rm -rf "$tmp_dir"' EXIT
 
-mkdir -p "$scratch/bin" "$scratch/home/.local/state/omarchy" "$scratch/modules"
-log="$scratch/calls"
-
-cat >"$scratch/bin/uname" <<'STUB'
+mkdir -p "$tmp_dir/bin" "$tmp_dir/home" "$tmp_dir/modules"
+cat >"$tmp_dir/bin/uname" <<'STUB'
 #!/bin/bash
-[[ ${1:-} == "-r" ]] || exit 2
-printf '%s\n' "$RUNNING_KERNEL"
+echo "$TEST_RUNNING_KERNEL"
 STUB
-
-cat >"$scratch/bin/pacman" <<'STUB'
+cat >"$tmp_dir/bin/pacman" <<'STUB'
 #!/bin/bash
-[[ ${1:-} == "-Qo" ]] || exit 1
-case ${2:-} in
-  "$OMARCHY_MODULES_ROOT/$OWNED_KERNEL/modules.order") exit 0 ;;
-  "$OMARCHY_MODULES_ROOT/$HEADERS_KERNEL/") exit 0 ;;
-esac
+[[ $1 == "-Qo" ]] && grep -Fxq "$2" "$TEST_OWNED_FILES"
+STUB
+cat >"$tmp_dir/bin/gum" <<'STUB'
+#!/bin/bash
+printf 'prompt:%s\n' "$*" >>"$TEST_LOG"
 exit 1
 STUB
-
-cat >"$scratch/bin/gum" <<'STUB'
-#!/bin/bash
-printf 'gum %s\n' "$*" >>"$TEST_LOG"
-exit 1
-STUB
-
-cat >"$scratch/bin/pgrep" <<'STUB'
+cat >"$tmp_dir/bin/pgrep" <<'STUB'
 #!/bin/bash
 exit 1
 STUB
+chmod +x "$tmp_dir/bin"/*
 
-cat >"$scratch/bin/omarchy-restart-shell" <<'STUB'
-#!/bin/bash
-printf 'restart-shell\n' >>"$TEST_LOG"
-STUB
+export TEST_OWNED_FILES="$tmp_dir/owned" TEST_LOG="$tmp_dir/log"
 
-cat >"$scratch/bin/omarchy-system-reboot" <<'STUB'
-#!/bin/bash
-printf 'reboot\n' >>"$TEST_LOG"
-STUB
-
-chmod +x "$scratch/bin/"*
-
-run_case() {
-  local running="$1"
-  local owned="$2"
-  local headers="${3:-}"
-  : >"$log"
-  RUNNING_KERNEL="$running" OWNED_KERNEL="$owned" HEADERS_KERNEL="$headers" TEST_LOG="$log"    OMARCHY_MODULES_ROOT="$scratch/modules" HOME="$scratch/home"     PATH="$scratch/bin:$PATH"     "$ROOT/bin/omarchy-update-restart" >/dev/null
+# kernel VERSION FILE...: a modules directory holding the given package-owned files
+kernel() {
+  local version=$1 file
+  shift
+  rm -rf "$tmp_dir/modules"
+  mkdir -p "$tmp_dir/modules/$version"
+  : >"$TEST_OWNED_FILES"
+  for file in "$@"; do
+    touch "$tmp_dir/modules/$version/$file"
+    echo "$tmp_dir/modules/$version/$file" >>"$TEST_OWNED_FILES"
+  done
 }
 
-mkdir -p "$scratch/modules/7.2.2-2-aarch64-ARCH"
-run_case "7.2.2-2-aarch64-ARCH" "7.2.2-2-aarch64-ARCH"
-if grep -q 'Linux kernel has been updated' "$log"; then
-  fail "owned running aarch64 kernel does not request reboot" "$(cat "$log")"
-fi
-pass "owned running aarch64 kernel is recognized without vmlinuz"
+prompts() {
+  : >"$TEST_LOG"
+  TEST_RUNNING_KERNEL=$1 OMARCHY_KERNEL_MODULES_PATH="$tmp_dir/modules" HOME="$tmp_dir/home" \
+    OMARCHY_UPDATE_UNATTENDED=0 PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-update-restart" --reboot-only >/dev/null 2>&1
+  cat "$TEST_LOG"
+}
 
-mkdir -p "$scratch/modules/7.2.3-1-aarch64-ARCH"
-run_case "7.2.2-2-aarch64-ARCH" "7.2.3-1-aarch64-ARCH"
-grep -q 'Linux kernel has been updated. Reboot?' "$log" ||
-  fail "different installed kernel requests reboot" "$(cat "$log")"
-pass "different installed kernel still requests reboot"
+kernel 7.2.8-1-aarch64-ARCH modules.builtin
+[[ -z $(prompts 7.2.8-1-aarch64-ARCH) ]] || fail "a running Arch Linux ARM kernel, which ships no vmlinuz, asks for a reboot"
+pass "a running Arch Linux ARM kernel does not ask for a reboot"
 
-run_case "7.2.2-2-aarch64-ARCH" "not-the-running-kernel"
-grep -q 'Linux kernel has been updated. Reboot?' "$log" ||
-  fail "unowned modules directory cannot suppress reboot" "$(cat "$log")"
-pass "only package-owned module directories count as installed kernels"
+kernel 7.2.8-arch1-1 modules.builtin vmlinuz
+[[ -z $(prompts 7.2.8-arch1-1) ]] || fail "a running Arch kernel asks for a reboot"
+pass "a running Arch kernel does not ask for a reboot"
 
-run_case "7.2.2-2-aarch64-ARCH" "7.2.3-1-aarch64-ARCH" "7.2.2-2-aarch64-ARCH"
-grep -q 'Linux kernel has been updated. Reboot?' "$log" ||
-  fail "headers left behind for the running kernel cannot suppress reboot" "$(cat "$log")"
-pass "headers owning the running kernel's modules directory still request reboot"
+kernel 7.2.9-1-aarch64-ARCH modules.builtin
+grep -Fxq "prompt:confirm --affirmative Yes --negative No Linux kernel has been updated. Reboot?" <<<"$(prompts 7.2.8-1-aarch64-ARCH)" ||
+  fail "an updated kernel asks for a reboot"
+pass "an updated kernel asks for a reboot"
+
+kernel 7.2.8-1-aarch64-ARCH
+touch "$tmp_dir/modules/7.2.8-1-aarch64-ARCH/modules.builtin"
+grep -Fxq "prompt:confirm --affirmative Yes --negative No Linux kernel has been updated. Reboot?" <<<"$(prompts 7.2.8-1-aarch64-ARCH)" ||
+  fail "a leftover directory no package owns asks for a reboot"
+pass "a leftover directory no package owns asks for a reboot"
