@@ -144,13 +144,6 @@ BarWidget {
     trayMenuPending = false
   }
 
-  // The waiting menu must not steal focus after the user has moved away
-  // from the icon that requested it. No popup/input grab is needed.
-  function cancelPendingTrayMenuFor(anchorItem) {
-    if (root.trayMenuPending && root.activeTrayAnchor === anchorItem)
-      root.trayMenuPending = false
-  }
-
   function syncTrayMenuOpen() {
     var hasChildren = TrayModel.menuModelHasChildren(trayMenuOpener.children)
     if (hasChildren && trayMenuPending) {
@@ -955,7 +948,6 @@ BarWidget {
       onEntered: if (root.bar) root.bar.showTooltip(trayItemRoot, root.trayTooltip(modelData))
       onExited: {
         if (root.bar) root.bar.hideTooltip(trayItemRoot)
-        root.cancelPendingTrayMenuFor(trayItemRoot)
       }
       onPressed: function(mouse) {
         if (mouse.button === Qt.RightButton) {
