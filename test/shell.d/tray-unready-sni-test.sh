@@ -148,6 +148,25 @@ vm.runInNewContext(exitedHandler[1], { root: detachedRoot, trayItemRoot: clicked
 assert(detachedRoot.trayMenuPending,
   'pointer exit during bar teardown does not cancel a pending menu')
 
+const clickedHandler = /onClicked: function\(mouse\) \{\n([\s\S]*?)\n      \}\n      onWheel:/.exec(trayItemSource)
+assert(!!clickedHandler, 'tray mouse click handler exists')
+function clickIcon(button) {
+  const state = {
+    Qt: { LeftButton: 1, RightButton: 2, MiddleButton: 4 },
+    root: { trayMenuPending: true },
+    trayItemRoot: {
+      displayMenu: function() {},
+      modelData: { onlyMenu: false, activate: function() {}, secondaryActivate: function() {} }
+    },
+    mouse: { button: button, accepted: false }
+  }
+  vm.runInNewContext(clickedHandler[1], state)
+  return state.root.trayMenuPending
+}
+assert(!clickIcon(1), 'activating another tray icon drops a pending menu, so it cannot open over what was activated')
+assert(!clickIcon(4), 'middle-clicking another tray icon drops a pending menu')
+assert(clickIcon(2), 'a right-click is left to openTrayMenu, which owns the pending state')
+
 // A click elsewhere on the desktop is not observed by this tray-local handler;
 // the existing bounded timer is a separate UX compromise needing compositor proof.
 

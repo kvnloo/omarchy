@@ -959,10 +959,12 @@ BarWidget {
         if (mouse.button === Qt.RightButton) {
           mouse.accepted = true
         } else if (mouse.button === Qt.MiddleButton) {
+          root.trayMenuPending = false
           trayItemRoot.modelData.secondaryActivate()
         } else if (trayItemRoot.modelData.onlyMenu) {
           trayItemRoot.displayMenu(mouse)
         } else {
+          root.trayMenuPending = false
           trayItemRoot.modelData.activate()
         }
       }
