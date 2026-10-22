@@ -112,49 +112,43 @@ assert(
   'an item leaving the whole tray closes its open menu, or cancels its pending click'
 )
 
-const closeFn = source.slice(
-  source.indexOf('function close()'),
-  source.indexOf('function syncTrayMenuOpen()')
-)
-assert(/trayMenuPending = false/.test(closeFn), 'close() cancels a pending open so a dismissed menu cannot reopen itself')
-assert(!/activeTrayItem = null/.test(closeFn), 'close() keeps the active item so the menu fades out with its rows')
-// Exercise the production root method AND the actual MouseArea exit handler,
-// not a duplicate implementation or a timeout constant. No QML/compositor
-// events are synthesized by Node: those still need a live shell regression.
-const cancelSource = source.slice(
-  source.indexOf('function cancelPendingTrayMenuFor(anchorItem) {'),
-  source.indexOf('function syncTrayMenuOpen()')
-)
-assert(cancelSource.startsWith('function cancelPendingTrayMenuFor('),
-  'tray has a specific cancellation method for its originating icon')
-const trayItemSource = source.slice(source.indexOf('component TrayItem: Item {'))
-const exitedHandler = /onExited:\s*\{([\s\S]*?)\n\s*\}\n\s*onPressed:/.exec(trayItemSource)
-assert(!!exitedHandler, 'tray mouse exit delegates pending cancellation')
-
-function exitIcon(clickedIcon, exitedIcon, pending, hasBar) {
-  const state = {
-    root: {
-      trayMenuPending: pending,
-      trayMenuOpen: !pending,
-      activeTrayAnchor: clickedIcon,
-      bar: hasBar ? { hideTooltip: function() {} } : null
-    },
-    trayItemRoot: exitedIcon
-  }
-  vm.runInNewContext(cancelSource +
-    '\nroot.cancelPendingTrayMenuFor = cancelPendingTrayMenuFor\n' +
-    exitedHandler[1], state)
-  return state.root
+const closeBody = /^  function close\\(\\) \\{\\n([\\s\\S]*?)^  \\}/m.exec(source)
+assert(!!closeBody, 'close() method exists')
+const pendingClose = {
+  managePopupOpen: true,
+  trayMenuOpen: true,
+  trayMenuPending: true
 }
-const ownerIcon = {}, otherIcon = {}
-assert(!exitIcon(ownerIcon, ownerIcon, true, true).trayMenuPending,
-  'leaving the clicked icon cancels the pending menu before delayed rows arrive')
-assert(exitIcon(ownerIcon, otherIcon, true, true).trayMenuPending,
-  'another tray icon cannot cancel a newer click on the original icon')
-const visibleMenu = exitIcon(ownerIcon, ownerIcon, false, true)
-assert(visibleMenu.trayMenuOpen && !visibleMenu.trayMenuPending,
-  'leaving after the menu opened does not dismiss it')
-assert(!exitIcon(ownerIcon, ownerIcon, true, false).trayMenuPending,
-  'abandonment cancels even when the tooltip/bar host has gone away')
+// Run the *production* close body so another method cannot satisfy a
+// string-search assertion for a missing cancellation.
+vm.runInNewContext('function close() {\\n' + closeBody[1] + '}\\nclose()', pendingClose)
+assertDeepEqual(pendingClose, {
+  managePopupOpen: false,
+  trayMenuOpen: false,
+  trayMenuPending: false
+}, 'close() releases a pending menu as well as existing popups')
+
+const trayItemSource = source.slice(source.indexOf('component TrayItem: Item {'))
+const exitedHandler = /onExited:\\s*\\{([\\s\\S]*?)\\n\\s*\\}\\n\\s*onPressed:/.exec(trayItemSource)
+assert(!!exitedHandler, 'tray mouse exit handler exists')
+const clickedIcon = {}
+let tooltipHidden = false
+const activeRoot = {
+  trayMenuPending: true,
+  trayMenuOpen: false,
+  bar: { hideTooltip: function(icon) { tooltipHidden = icon === clickedIcon } }
+}
+vm.runInNewContext(exitedHandler[1], { root: activeRoot, trayItemRoot: clickedIcon })
+assert(tooltipHidden, 'pointer exit still hides the originating icon tooltip')
+assert(activeRoot.trayMenuPending && !activeRoot.trayMenuOpen,
+  'moving toward a slow menu must not cancel its pending click')
+
+const detachedRoot = { trayMenuPending: true, bar: null }
+vm.runInNewContext(exitedHandler[1], { root: detachedRoot, trayItemRoot: clickedIcon })
+assert(detachedRoot.trayMenuPending,
+  'pointer exit during bar teardown does not cancel a pending menu')
+
+// A click elsewhere on the desktop is not observed by this tray-local handler;
+// the existing bounded timer is a separate UX compromise needing compositor proof.
 
 JS
