@@ -112,7 +112,7 @@ assert(
   'an item leaving the whole tray closes its open menu, or cancels its pending click'
 )
 
-const closeBody = /^  function close\\(\\) \\{\\n([\\s\\S]*?)^  \\}/m.exec(source)
+const closeBody = /^  function close\(\) \{\n([\s\S]*?)^  \}/m.exec(source)
 assert(!!closeBody, 'close() method exists')
 const pendingClose = {
   managePopupOpen: true,
@@ -121,7 +121,7 @@ const pendingClose = {
 }
 // Run the *production* close body so another method cannot satisfy a
 // string-search assertion for a missing cancellation.
-vm.runInNewContext('function close() {\\n' + closeBody[1] + '}\\nclose()', pendingClose)
+vm.runInNewContext('function close() {\n' + closeBody[1] + '}\nclose()', pendingClose)
 assertDeepEqual(pendingClose, {
   managePopupOpen: false,
   trayMenuOpen: false,
@@ -129,7 +129,7 @@ assertDeepEqual(pendingClose, {
 }, 'close() releases a pending menu as well as existing popups')
 
 const trayItemSource = source.slice(source.indexOf('component TrayItem: Item {'))
-const exitedHandler = /onExited:\\s*\\{([\\s\\S]*?)\\n\\s*\\}\\n\\s*onPressed:/.exec(trayItemSource)
+const exitedHandler = /onExited:\s*\{([\s\S]*?)\n\s*\}\n\s*onPressed:/.exec(trayItemSource)
 assert(!!exitedHandler, 'tray mouse exit handler exists')
 const clickedIcon = {}
 let tooltipHidden = false
