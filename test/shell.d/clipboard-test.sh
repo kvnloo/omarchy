@@ -307,6 +307,10 @@ SH
 cat >"$TMPDIR/bin/wtype" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >"$WTYPE_OUT"
+if [[ -n ${FOCUS_SEQUENCE_LOG:-} ]]; then
+  active=$(cat "${HYPRCTL_STATE_FILE:-/nonexistent}" 2>/dev/null || true)
+  printf 'paste %s\n' "${active:-none}" >>"$FOCUS_SEQUENCE_LOG"
+fi
 SH
 
 cat >"$TMPDIR/bin/omarchy-launch-browser" <<'SH'
@@ -559,6 +563,14 @@ case "$*" in
   *dsp.focus*|*focuswindow*)
     if [[ -n ${HYPRCTL_STATE_FILE:-} ]]; then
       address=$(sed -n 's/.*address:\(0x[0-9A-Fa-f]*\).*/\1/p' <<<"$*")
+      if [[ -n ${HYPRCTL_ATTEMPTS_FILE:-} ]]; then
+        attempts=0
+        [[ -f $HYPRCTL_ATTEMPTS_FILE ]] && read -r attempts <"$HYPRCTL_ATTEMPTS_FILE"
+        ((attempts += 1))
+        printf '%s\n' "$attempts" >"$HYPRCTL_ATTEMPTS_FILE"
+        [[ -z ${FOCUS_SEQUENCE_LOG:-} ]] || printf 'focus %s\n' "$attempts" >>"$FOCUS_SEQUENCE_LOG"
+        (( attempts >= ${HYPRCTL_FOCUS_ACCEPT_ON:-1} )) || exit 0
+      fi
       [[ -n $address ]] && printf '%s\n' "$address" >"$HYPRCTL_STATE_FILE"
     fi
     ;;
@@ -642,6 +654,86 @@ pass "clipboard file paste helper pastes after refocusing the origin window"
 
 grep -qF 'hl.dsp.focus({ window = "address:0xcafebabe" })' "$TMPDIR/hyprctl-file" || fail "clipboard file paste helper refocuses the origin window by address"
 pass "clipboard file paste helper refocuses the origin window by address"
+
+# A focus request can be ignored while the clipboard overlay closes. Both
+# helpers must retry, and must not inject until the origin is really active.
+for mode in text file; do
+  target=0xdeadbeef
+  if [[ $mode == file ]]; then
+    target=0xcafebabe
+    paste=("$ROOT/bin/omarchy-clipboard-paste-file" image/png "$TMPDIR/image-focus.png" "$target")
+  else
+    paste=("$ROOT/bin/omarchy-clipboard-paste-text" --shift-insert --history-index 1 "$target")
+  fi
+
+  sequence="$TMPDIR/focus-sequence-$mode"
+  state="$TMPDIR/focus-state-$mode"
+  attempts="$TMPDIR/focus-attempts-$mode"
+  output="$TMPDIR/wtype-delayed-$mode"
+  : >"$sequence"
+  rm -f "$state" "$attempts" "$output"
+  env "${focus_env[@]}" HYPRCTL_OUT="$TMPDIR/hyprctl-delayed-$mode" \
+    HYPRCTL_STATE_FILE="$state" HYPRCTL_ATTEMPTS_FILE="$attempts" \
+    HYPRCTL_FOCUS_ACCEPT_ON=3 FOCUS_SEQUENCE_LOG="$sequence" \
+    WTYPE_OUT="$output" SLEEP_OUT="$TMPDIR/sleep-delayed-$mode" \
+    "${paste[@]}"
+
+  [[ $(<"$attempts") == 3 ]] || fail "$mode retries focus until third request" "$(cat "$sequence")"
+  [[ $(<"$sequence") == 
+rm -f "$TMPDIR/hyprctl-file-bare-state"
+env WL_COPY_OUT="$TMPDIR/copied-file-bare" WTYPE_OUT="$TMPDIR/wtype-file-bare" SLEEP_OUT="$TMPDIR/sleep-file-bare" \
+  HYPRCTL_OUT="$TMPDIR/hyprctl-file-bare" HYPRCTL_STATE_FILE="$TMPDIR/hyprctl-file-bare-state" PATH="$TMPDIR/bin:$PATH" \
+  "$ROOT/bin/omarchy-clipboard-paste-file" image/png "$TMPDIR/image-focus.png" "cafebabe"
+grep -qF 'address:0xcafebabe' "$TMPDIR/hyprctl-file-bare" || fail "clipboard file paste helper normalises a bare window address"
+pass "clipboard file paste helper normalises a bare window address"
+
+: >"$TMPDIR/hyprctl-file-fail"
+rm -f "$TMPDIR/wtype-file-fail"
+env WL_COPY_OUT="$TMPDIR/copied-file-fail" WTYPE_OUT="$TMPDIR/wtype-file-fail" \
+  SLEEP_OUT="$TMPDIR/sleep-file-fail" HYPRCTL_OUT="$TMPDIR/hyprctl-file-fail" \
+  HYPRCTL_ADDRESS="0xother" PATH="$TMPDIR/bin:$PATH" \
+  "$ROOT/bin/omarchy-clipboard-paste-file" image/png "$TMPDIR/image-focus.png" "0xcafebabe"
+[[ $(<"$TMPDIR/copied-file-fail") == "image-data" ]] || fail "clipboard file helper still copies when origin refocus fails"
+[[ ! -e "$TMPDIR/wtype-file-fail" ]] || fail "clipboard file helper must not inject into a different focused window"
+pass "clipboard file helper aborts injection when origin cannot be restored"
+
+env WL_COPY_OUT="$TMPDIR/copied-file-none" WTYPE_OUT="$TMPDIR/wtype-file-none" SLEEP_OUT="$TMPDIR/sleep-file-none" \
+  HYPRCTL_OUT="$TMPDIR/hyprctl-file-none" PATH="$TMPDIR/bin:$PATH" \
+  "$ROOT/bin/omarchy-clipboard-paste-file" image/png "$TMPDIR/image-focus.png"
+[[ $(<"$TMPDIR/wtype-file-none") == "-M shift -k Insert -m shift" ]] || fail "clipboard file paste helper still pastes without a window address"
+pass "clipboard file paste helper still pastes without a window address"
+[[ ! -e "$TMPDIR/hyprctl-file-none" ]] || ! grep -qE 'dsp\.focus|dispatch focuswindow' "$TMPDIR/hyprctl-file-none" || fail "clipboard file paste helper skips refocus without a window address"
+pass "clipboard file paste helper skips refocus without a window address"
+
+jq -n --arg url 'https://example.com/docs' --arg text "$(printf 'plain text\nsecond line')" --arg image "$TMPDIR/image.png" \
+  '[{type:"text", text:$url}, {type:"text", text:$text}, {type:"image", mime:"image/png", path:$image}]' >"$TMPDIR/home/.local/state/omarchy/clipboard-history.json"
+
+BROWSER_OUT="$TMPDIR/browser" HOME="$TMPDIR/home" PATH="$TMPDIR/bin:$PATH" \
+  "$ROOT/bin/omarchy-clipboard-open" --history-index 0
+
+[[ $(<"$TMPDIR/browser") == "https://example.com/docs" ]] || fail "clipboard open helper opens URL entries in browser"
+pass "clipboard open helper opens URL entries in browser"
+
+EDITOR_PATH_OUT="$TMPDIR/editor-path" EDITOR_TEXT_OUT="$TMPDIR/editor-text" HOME="$TMPDIR/home" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" \
+  "$ROOT/bin/omarchy-clipboard-open" --history-index 1
+
+[[ $(<"$TMPDIR/editor-text") == "$(printf 'plain text\nsecond line')" ]] || fail "clipboard open helper opens text entries in editor"
+pass "clipboard open helper opens text entries in editor"
+
+[[ $(<"$TMPDIR/editor-path") == "$TMPDIR"/state/omarchy/clipboard-open/clipboard.*.txt ]] || fail "clipboard open helper writes text entries to a temporary file"
+pass "clipboard open helper writes text entries to a temporary file"
+
+OMASNAP_OUT="$TMPDIR/omasnap" HOME="$TMPDIR/home" PATH="$TMPDIR/bin:$PATH" \
+  "$ROOT/bin/omarchy-clipboard-open" --history-index 2
+
+[[ $(<"$TMPDIR/omasnap") == "$TMPDIR/image.png" ]] || fail "clipboard open helper opens image entries in Omasnap"
+pass "clipboard open helper opens image entries in Omasnap"
+focus 1\nfocus 2\nfocus 3\npaste '"$target" ]] ||
+    fail "$mode injects only after focus is confirmed" "$(cat "$sequence")"
+  [[ $(<"$output") == "-M shift -k Insert -m shift" ]] ||
+    fail "$mode uses the expected paste chord after delayed focus"
+  pass "$mode paste waits for delayed origin focus"
+done
 
 : >"$TMPDIR/hyprctl-file-bare"
 rm -f "$TMPDIR/hyprctl-file-bare-state"
