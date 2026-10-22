@@ -24,7 +24,18 @@ grep -q "outside the private-use range" "$tmp/err.txt" ||
   fail "refused --codepoint leaves the font file untouched"
 pass "--codepoint outside the PUA is rejected and the font is untouched"
 
-# 2. A malformed codepoint fails cleanly instead of a traceback.
+# 2. A codepoint above the PUA must also be refused without modifying the font.
+if python3 "$ROOT/bin/omarchy-dev-font" add testmark "$tmp/mark.svg" \
+  --codepoint U+F900 --font "$tmp/test.ttf" 2>"$tmp/err-upper.txt"; then
+  fail "--codepoint U+F900 is rejected"
+fi
+grep -q "outside the private-use range" "$tmp/err-upper.txt" ||
+  fail "--codepoint U+F900 names the private-use range" "$(cat "$tmp/err-upper.txt")"
+[[ $(md5sum "$tmp/test.ttf" | cut -d' ' -f1) == "$md5_before" ]] ||
+  fail "refused upper-bound --codepoint leaves the font file untouched"
+pass "--codepoint above the PUA is rejected and the font is untouched"
+
+# 3. A malformed codepoint fails cleanly instead of a traceback.
 if python3 "$ROOT/bin/omarchy-dev-font" add testmark "$tmp/mark.svg" \
   --codepoint xyz --font "$tmp/test.ttf" 2>"$tmp/err2.txt"; then
   fail "malformed --codepoint is rejected"
@@ -33,7 +44,7 @@ grep -q "Traceback" "$tmp/err2.txt" &&
   fail "malformed --codepoint has no traceback" "$(cat "$tmp/err2.txt")"
 pass "malformed --codepoint fails with a clean error"
 
-# 3. A free PUA codepoint still works (positive control).
+# 4. A free PUA codepoint still works (positive control).
 python3 "$ROOT/bin/omarchy-dev-font" add testmark "$tmp/mark.svg" \
   --codepoint U+E9FF --font "$tmp/test.ttf" >/dev/null 2>&1 ||
   fail "--codepoint U+E9FF (free PUA slot) is accepted"
