@@ -679,56 +679,7 @@ for mode in text file; do
     "${paste[@]}"
 
   [[ $(<"$attempts") == 3 ]] || fail "$mode retries focus until third request" "$(cat "$sequence")"
-  [[ $(<"$sequence") == 
-rm -f "$TMPDIR/hyprctl-file-bare-state"
-env WL_COPY_OUT="$TMPDIR/copied-file-bare" WTYPE_OUT="$TMPDIR/wtype-file-bare" SLEEP_OUT="$TMPDIR/sleep-file-bare" \
-  HYPRCTL_OUT="$TMPDIR/hyprctl-file-bare" HYPRCTL_STATE_FILE="$TMPDIR/hyprctl-file-bare-state" PATH="$TMPDIR/bin:$PATH" \
-  "$ROOT/bin/omarchy-clipboard-paste-file" image/png "$TMPDIR/image-focus.png" "cafebabe"
-grep -qF 'address:0xcafebabe' "$TMPDIR/hyprctl-file-bare" || fail "clipboard file paste helper normalises a bare window address"
-pass "clipboard file paste helper normalises a bare window address"
-
-: >"$TMPDIR/hyprctl-file-fail"
-rm -f "$TMPDIR/wtype-file-fail"
-env WL_COPY_OUT="$TMPDIR/copied-file-fail" WTYPE_OUT="$TMPDIR/wtype-file-fail" \
-  SLEEP_OUT="$TMPDIR/sleep-file-fail" HYPRCTL_OUT="$TMPDIR/hyprctl-file-fail" \
-  HYPRCTL_ADDRESS="0xother" PATH="$TMPDIR/bin:$PATH" \
-  "$ROOT/bin/omarchy-clipboard-paste-file" image/png "$TMPDIR/image-focus.png" "0xcafebabe"
-[[ $(<"$TMPDIR/copied-file-fail") == "image-data" ]] || fail "clipboard file helper still copies when origin refocus fails"
-[[ ! -e "$TMPDIR/wtype-file-fail" ]] || fail "clipboard file helper must not inject into a different focused window"
-pass "clipboard file helper aborts injection when origin cannot be restored"
-
-env WL_COPY_OUT="$TMPDIR/copied-file-none" WTYPE_OUT="$TMPDIR/wtype-file-none" SLEEP_OUT="$TMPDIR/sleep-file-none" \
-  HYPRCTL_OUT="$TMPDIR/hyprctl-file-none" PATH="$TMPDIR/bin:$PATH" \
-  "$ROOT/bin/omarchy-clipboard-paste-file" image/png "$TMPDIR/image-focus.png"
-[[ $(<"$TMPDIR/wtype-file-none") == "-M shift -k Insert -m shift" ]] || fail "clipboard file paste helper still pastes without a window address"
-pass "clipboard file paste helper still pastes without a window address"
-[[ ! -e "$TMPDIR/hyprctl-file-none" ]] || ! grep -qE 'dsp\.focus|dispatch focuswindow' "$TMPDIR/hyprctl-file-none" || fail "clipboard file paste helper skips refocus without a window address"
-pass "clipboard file paste helper skips refocus without a window address"
-
-jq -n --arg url 'https://example.com/docs' --arg text "$(printf 'plain text\nsecond line')" --arg image "$TMPDIR/image.png" \
-  '[{type:"text", text:$url}, {type:"text", text:$text}, {type:"image", mime:"image/png", path:$image}]' >"$TMPDIR/home/.local/state/omarchy/clipboard-history.json"
-
-BROWSER_OUT="$TMPDIR/browser" HOME="$TMPDIR/home" PATH="$TMPDIR/bin:$PATH" \
-  "$ROOT/bin/omarchy-clipboard-open" --history-index 0
-
-[[ $(<"$TMPDIR/browser") == "https://example.com/docs" ]] || fail "clipboard open helper opens URL entries in browser"
-pass "clipboard open helper opens URL entries in browser"
-
-EDITOR_PATH_OUT="$TMPDIR/editor-path" EDITOR_TEXT_OUT="$TMPDIR/editor-text" HOME="$TMPDIR/home" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" \
-  "$ROOT/bin/omarchy-clipboard-open" --history-index 1
-
-[[ $(<"$TMPDIR/editor-text") == "$(printf 'plain text\nsecond line')" ]] || fail "clipboard open helper opens text entries in editor"
-pass "clipboard open helper opens text entries in editor"
-
-[[ $(<"$TMPDIR/editor-path") == "$TMPDIR"/state/omarchy/clipboard-open/clipboard.*.txt ]] || fail "clipboard open helper writes text entries to a temporary file"
-pass "clipboard open helper writes text entries to a temporary file"
-
-OMASNAP_OUT="$TMPDIR/omasnap" HOME="$TMPDIR/home" PATH="$TMPDIR/bin:$PATH" \
-  "$ROOT/bin/omarchy-clipboard-open" --history-index 2
-
-[[ $(<"$TMPDIR/omasnap") == "$TMPDIR/image.png" ]] || fail "clipboard open helper opens image entries in Omasnap"
-pass "clipboard open helper opens image entries in Omasnap"
-focus 1\nfocus 2\nfocus 3\npaste '"$target" ]] ||
+  [[ $(<"$sequence") == $'focus 1\nfocus 2\nfocus 3\npaste '"$target" ]] ||
     fail "$mode injects only after focus is confirmed" "$(cat "$sequence")"
   [[ $(<"$output") == "-M shift -k Insert -m shift" ]] ||
     fail "$mode uses the expected paste chord after delayed focus"
