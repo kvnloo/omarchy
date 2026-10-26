@@ -37,6 +37,17 @@ SH
 cat >"$mock_bin/systemd-run" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >"$OMARCHY_TEST_BROWSER_LAUNCH"
+# The self-reference fixture simulates one handoff into the private sentinel,
+# never a real user systemd unit, uwsm-app or browser launch.
+if [[ -n ${OMARCHY_TEST_BROWSER_RECURSE:-} ]]; then
+  args=("$@")
+  for (( i=0; i + 2 < ${#args[@]}; i++ )); do
+    if [[ ${args[i]} == "uwsm-app" && ${args[i+1]} == "--" && ${args[i+2]} == "omarchy-launch-browser" ]]; then
+      exec "${OMARCHY_TEST_BROWSER_SENTINEL:?}" "${args[@]:i+3}"
+    fi
+  done
+  exit 1
+fi
 SH
 cat >"$mock_bin/omarchy-hyprland-focus-app" <<'SH'
 #!/bin/bash
@@ -130,6 +141,7 @@ cat >"$mock_bin/omarchy-launch-browser" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >>"$OMARCHY_TEST_BROWSER_RECURSE"
 SH
+chmod +x "$mock_bin/omarchy-launch-browser"
 mkdir -p "$test_home/.config"
 cat >"$test_home/.config/mimeapps.list" <<'EOF'
 [Default Applications]
@@ -138,16 +150,27 @@ x-scheme-handler/https=selfref.desktop
 EOF
 recurse_log="$test_tmp/recurse"
 error_log="$test_tmp/error"
-rm -f "$launch_log"
+# Prove the mocked handoff really executes the executable sentinel; the
+# guarded production invocation below must prevent that same one-step path.
+OMARCHY_TEST_BROWSER_LAUNCH="$launch_log" OMARCHY_TEST_BROWSER_RECURSE="$recurse_log" \
+  OMARCHY_TEST_BROWSER_SENTINEL="$mock_bin/omarchy-launch-browser" \
+  "$mock_bin/systemd-run" --user --quiet --collect --unit=omarchy-browser-test \
+    uwsm-app -- omarchy-launch-browser "https://example.test/loop"
+grep -Fx 'https://example.test/loop' "$recurse_log" >/dev/null ||
+  fail "the mocked browser handoff reaches the executable recursion sentinel"
+rm -f "$launch_log" "$recurse_log"
 
 set +e
 HOME="$test_home" PATH="$mock_bin:$ROOT/bin:$PATH" \
   OMARCHY_TEST_BROWSER_LAUNCH="$launch_log" OMARCHY_TEST_BROWSER_RECURSE="$recurse_log" \
+  OMARCHY_TEST_BROWSER_SENTINEL="$mock_bin/omarchy-launch-browser" \
   bash "$ROOT/bin/omarchy-launch-browser" "https://example.test/loop" 2>"$error_log"
 launcher_status=$?
 set -e
 
-(( launcher_status != 0 )) || fail "a self-referencing default browser entry exits with an error"
+(( launcher_status != 0 )) ||
+  fail "a self-referencing default browser entry exits with an error" \
+    "mocked re-entry: $(cat "$recurse_log" 2>/dev/null || true)"
 [[ ! -s $recurse_log ]] || fail "a self-referencing default browser entry runs omarchy-launch-browser again
 
 $(cat "$recurse_log")"
