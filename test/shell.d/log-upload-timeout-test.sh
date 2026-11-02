@@ -16,7 +16,11 @@ mkdir -p "$stub_bin"
 cat >"$stub_bin/curl" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >>"$TEST_CURL_ARGS"
-if [[ " $* " == *" --max-time "* ]]; then
+if [[ ${TEST_CURL_MODE:-timeout} == "success" ]]; then
+  printf '%s\n' 'https://logs.omarchy.org/sample'
+  exit 0
+fi
+if [[ " $* " == *" --max-time 60 "* ]]; then
   exit 28
 fi
 sleep 300
@@ -36,7 +40,7 @@ SH
 chmod +x "$stub_bin/journalctl"
 
 run_upload_log() {
-  TEST_CURL_ARGS="$curl_args" \
+  TEST_CURL_MODE="${1:-timeout}" TEST_CURL_ARGS="$curl_args" \
     PATH="$stub_bin:/usr/bin:/bin" \
     HOME="$test_tmp/home" \
     timeout 15 "$ROOT/bin/omarchy-upload-log" this-boot
@@ -64,7 +68,7 @@ exit 1
 SH
   chmod +x "$stub_bin/expac"
   mkdir -p "$test_tmp/home"
-  TEST_CURL_ARGS="$curl_args" \
+  TEST_CURL_MODE="${1:-timeout}" TEST_CURL_ARGS="$curl_args" \
     PATH="$stub_bin:/usr/bin:/bin" \
     HOME="$test_tmp/home" \
     timeout 20 "$ROOT/bin/omarchy-debug" --no-sudo
@@ -78,7 +82,7 @@ status=$?
 set -e
 [[ $status -eq 1 ]] || fail "upload-log exits 1 when the upload endpoint hangs" "exit=$status out=$out"
 [[ $out == *"Failed to upload"* ]] || fail "upload-log reports the failed upload" "out=$out"
-grep -q -- "--max-time" "$curl_args" || fail "upload-log bounds the upload curl with --max-time" "$(cat "$curl_args")"
+grep -Fq -- "--max-time 60" "$curl_args" || fail "upload-log bounds the upload curl with --max-time" "$(cat "$curl_args")"
 pass "upload-log fails loudly instead of hanging on a blackholed endpoint"
 
 # --- omarchy-debug ---
@@ -89,5 +93,29 @@ status=$?
 set -e
 [[ $status -eq 1 ]] || fail "debug exits 1 when the upload endpoint hangs" "exit=$status out=$out"
 [[ $out == *"Failed to upload"* ]] || fail "debug reports the failed upload" "out=$out"
-grep -q -- "--max-time" "$curl_args" || fail "debug bounds the upload curl with --max-time" "$(cat "$curl_args")"
+grep -Fq -- "--max-time 60" "$curl_args" || fail "debug bounds the upload curl with --max-time" "$(cat "$curl_args")"
 pass "debug fails loudly instead of hanging on a blackholed endpoint"
+
+# Healthy uploads must still return the service URL rather than taking the
+# failure path; this also checks that the timeout flag does not reject valid uploads.
+: >"$curl_args"
+set +e
+out=$(run_upload_log success 2>&1)
+status=$?
+set -e
+(( status == 0 )) || fail "upload-log succeeds with a healthy endpoint" "exit=$status out=$out"
+[[ $out == *"Log uploaded successfully!"* && $out == *"https://logs.omarchy.org/sample"* ]] ||
+  fail "upload-log presents the successful upload URL" "out=$out"
+grep -Fq -- "--max-time 60" "$curl_args" || fail "upload-log still bounds a successful request"
+pass "upload-log preserves successful uploads while bounding requests"
+
+: >"$curl_args"
+set +e
+out=$(run_debug success 2>&1)
+status=$?
+set -e
+(( status == 0 )) || fail "debug succeeds with a healthy endpoint" "exit=$status out=$out"
+[[ $out == *"Log uploaded successfully!"* && $out == *"https://logs.omarchy.org/sample"* ]] ||
+  fail "debug presents the successful upload URL" "out=$out"
+grep -Fq -- "--max-time 60" "$curl_args" || fail "debug still bounds a successful request"
+pass "debug preserves successful uploads while bounding requests"
