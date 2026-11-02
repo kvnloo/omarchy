@@ -152,7 +152,9 @@ esac
 
 echo ""
 
-URL=$(curl -sf -F "file=@$TEMP_LOG" -Fexpires=24 https://logs.omarchy.org/)
+# Bound the upload: a blackholed endpoint would otherwise hang this with no
+# feedback (curl has no overall timeout by default).
+URL=$(curl -sf --max-time 60 -F "file=@$TEMP_LOG" -Fexpires=24 https://logs.omarchy.org/)
 
 if (( $? == 0 )) && [[ -n $URL ]]; then
   echo "✓ Log uploaded successfully!"
