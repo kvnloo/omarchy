@@ -124,7 +124,8 @@ if [[ ${1:-} == "--help" ]]; then
 elif [[ ${1:-} == "--" ]]; then
   shift
 fi
-[[ ${1:-} == "known-hardware" ]]
+# An empty pattern matches every line, as it does for the real grep.
+[[ -z ${1:-} || ${1:-} == "known-hardware" ]]
 STUB
 chmod +x "$mock_bin/grep"
 
@@ -136,6 +137,23 @@ pass "hw-match treats an option-shaped hardware pattern literally"
 PATH="$mock_bin:$PATH" "$ROOT/bin/omarchy-hw-match" known-hardware ||
   fail "hw-match still accepts an ordinary hardware pattern"
 pass "hw-match still accepts an ordinary hardware pattern"
+
+# A missing pattern would match every readable DMI file, turning a forgotten
+# argument into a hardware "yes" for any caller.
+if PATH="$mock_bin:$PATH" "$ROOT/bin/omarchy-hw-match" 2>/dev/null; then
+  fail "hw-match refuses a missing pattern"
+fi
+pass "hw-match refuses a missing pattern"
+
+if PATH="$mock_bin:$PATH" "$ROOT/bin/omarchy-hw-match" "" 2>/dev/null; then
+  fail "hw-match refuses an empty pattern"
+fi
+pass "hw-match refuses an empty pattern"
+
+usage=$("$ROOT/bin/omarchy-hw-match" 2>&1 >/dev/null || true)
+[[ $usage == *"Usage: omarchy-hw-match <pattern>"* ]] ||
+  fail "hw-match usage names the missing pattern" "actual: $usage"
+pass "hw-match usage names the missing pattern"
 
 pkill_calls="$test_tmp/pkill-calls"
 cat >"$mock_bin/pkill" <<'STUB'
@@ -215,6 +233,47 @@ setsid_argv=$(<"$setsid_calls")
 [[ $setsid_argv == $'<uwsm-app>\n<-->\n<code>\n<-->\n<-cquit>' ]] ||
   fail "launch-editor separates a graphical editor path from editor options" "$setsid_argv"
 pass "launch-editor separates a graphical editor path from editor options"
+
+# Plain, the default without a saved choice, runs inline for $EDITOR so the
+# caller waits for its window, and falls back to Neovim without a display.
+rm -f "$fake_home/.local/state/omarchy/defaults/editor"
+cat >"$mock_bin/plain" <<'STUB'
+#!/bin/bash
+
+: "${OMARCHY_TEST_EDITOR_CALLS:?}"
+printf '<plain>\n' >"$OMARCHY_TEST_EDITOR_CALLS"
+printf '<%s>\n' "$@" >>"$OMARCHY_TEST_EDITOR_CALLS"
+STUB
+chmod +x "$mock_bin/plain"
+
+HOME="$fake_home" PATH="$mock_bin:$ROOT/bin:$PATH" WAYLAND_DISPLAY=wayland-1 OMARCHY_TEST_EDITOR_CALLS="$editor_calls" \
+  "$ROOT/bin/omarchy-launch-editor" --inline -cquit
+editor_argv=$(<"$editor_calls")
+[[ $editor_argv == $'<plain>\n<-->\n<-cquit>' ]] ||
+  fail "launch-editor runs Plain inline as the default editor" "$editor_argv"
+
+HOME="$fake_home" PATH="$mock_bin:$ROOT/bin:$PATH" WAYLAND_DISPLAY=wayland-1 OMARCHY_TEST_SETSID_CALLS="$setsid_calls" \
+  "$ROOT/bin/omarchy-launch-editor" -cquit
+setsid_argv=$(<"$setsid_calls")
+[[ $setsid_argv == $'<uwsm-app>\n<-->\n<plain>\n<-->\n<-cquit>' ]] ||
+  fail "launch-editor opens Plain as an app when not inline" "$setsid_argv"
+
+cat >"$mock_bin/vi" <<'STUB'
+#!/bin/bash
+
+: "${OMARCHY_TEST_EDITOR_CALLS:?}"
+printf '<vi>\n' >"$OMARCHY_TEST_EDITOR_CALLS"
+printf '<%s>\n' "$@" >>"$OMARCHY_TEST_EDITOR_CALLS"
+STUB
+chmod +x "$mock_bin/vi"
+
+env -u WAYLAND_DISPLAY HOME="$fake_home" PATH="$mock_bin:$ROOT/bin:$PATH" OMARCHY_TEST_EDITOR_CALLS="$editor_calls" \
+  "$ROOT/bin/omarchy-launch-editor" --inline -cquit
+editor_argv=$(<"$editor_calls")
+[[ $editor_argv == $'<vi>\n<-->\n<-cquit>' ]] ||
+  fail "launch-editor uses vi for Plain without a display" "$editor_argv"
+rm -f "$mock_bin/vi"
+pass "launch-editor defaults to Plain, inline for \$EDITOR, and vi without a display"
 
 hook_calls="$test_tmp/hook-calls"
 hook_home="$test_tmp/hook-home"
